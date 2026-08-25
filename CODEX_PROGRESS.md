@@ -10,16 +10,16 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.3.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.3.1`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`e07944c417d29fa258da01a19824ac85e9a3b610`
-- 当前状态：0.3.0 候选版已完成本地构建与验证；用户已明确授权提交、推送、创建 `0.3.0` 标签和 GitHub Release，云端流水线尚未运行
-- 远程状态：开始工作时本地 `main` 与 `origin/main` 一致；线上 0.3.0 尚未核验
+- 提交基线：`b47be9b02b5feedbf0853160ac8b89030d8418ba`
+- 当前状态：0.3.0 已发布但在线核验发现缺少兼容 `update.json`，按发布事故门禁保留原 Release 并准备 0.3.1 修复版；用户已授权继续提交、推送、标签和 Release
+- 远程状态：`main` 和 `0.3.0` 已推送；0.3.0 Actions 成功，但资产矩阵不完整，0.3.1 尚未发布
 - 当前工作：手柄、提示队列、双屏定位与位置微调、PinNote 风格 UI/毛玻璃、网络更新、模式即时切换、导航对齐、统一 Logo 和预览图标缓存规避已在工作树完成
-- 正式候选版本为 `0.3.0`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+- 正式候选版本为 `0.3.1`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
 
 ## 本轮实现
 
@@ -41,7 +41,8 @@ Get-Content .\GlyphEcho.csproj
 - 四个展示位置分别持久化 X/Y 物理像素微调，跨显示器复用同一锚点偏移，支持重置并把最终位置限制在目标工作区
 - Logo 改为简约的对话按键小脸；侧栏和全部 WPF 标题栏直接复用 `Assets/GlyphEcho.png`，程序、托盘和安装器 ICO 由同一 PNG 生成
 - 本地预览目录和 ZIP 名包含 ICO SHA-256 前 8 位；Logo 内容变化时自动换路径，避免 Explorer 按旧路径复用分尺寸图标缓存
-- 主界面从程序集动态显示版本；更新器和安装器不再维护独立默认版本，正式包统一从 `GlyphEcho.csproj` 传入 `0.3.0`
+- 主界面从程序集动态显示版本；更新器和安装器不再维护独立默认版本，正式包统一从 `GlyphEcho.csproj` 传入当前版本
+- 发布流水线除 `update-lite.json`、`update-full.json` 外复制生成兼容 `update.json`，内容与 Lite 清单字节一致
 
 ## 修改文件
 
@@ -78,13 +79,16 @@ git status --short --branch
 - 0.3.0 本地预览包：`temp/preview/GlyphEcho-0.3.0-Lite-local-23028564.zip`，非正式 Release，285,302 字节，SHA-256 `4EE8C2E6FB58B325D84E1291B7475E5546DB630FB44EC1B5066E9366782BBE34`
 - 0.3.0 后台 UI 验收：`temp/preview-ui-captures-030/ui-capture-status.json` 为 success；主程序与更新器文件版本均为 `0.3.0.0`，标题栏显示 `GlyphEcho 0.3.0`
 - 本地发布 ZIP 展开验证：Lite 285,302 字节、SHA-256 `1DE8273773F993439F359E00BC4794782422505C82E83281A79883F4C2FF34D7`、7 项；Full 99,550,808 字节、SHA-256 `A826FDC7D02D2EBBCC5B279889C3108E717E2DE20CEBDB78F2F69018AB730BFE`、466 项；通道标记和两个 EXE 版本均正确
+- 0.3.1 本地预览包：`temp/preview/GlyphEcho-0.3.1-Lite-local-23028564.zip`，非正式 Release，285,290 字节，SHA-256 `166A3715FA8F5DAF88F165729F1C5DD0B87A375C4A3706E2A68647FFD815C6FE`
+- 0.3.1 后台 UI 验收：`temp/preview-ui-captures-031/ui-capture-status.json` 为 success；13 张真实窗口截图均由 `PrintWindow` 捕获，Acrylic 与 frame HRESULT 均为 0，双屏右下偏移位置保持正确
+- 0.3.1 本地发布 ZIP 展开验证：Lite 285,290 字节、SHA-256 `458963A064ED7ADECE095E22E9DC4F9C699A9A298413CABB23FDC0AAFA36F106`、7 项；Full 99,550,821 字节、SHA-256 `1926D1C58DA4B6556CA6CCA2E24F598953E21E94201977B3BD160EA60453FDDA`、466 项；通道标记分别为 `lite`/`full`，两个 EXE 文件版本均为 `0.3.1.0`
 
 ## 尚未验证
 
 - 未在本轮自动测试窗口内人工推动左右摇杆、按真实 M1-M4；XInput 连接和静止状态已确认
 - 飞智黑武士 4 Pro 当前只暴露标准 XInput 字段；原生 M1-M4 仍无可验证协议。需在飞智空间站将背键映射为 F13-F16 后实测
 - 未使用上一正式 Release 原始客户端对带真实私钥签名的候选包执行完整升级；正式签名只能在 GitHub Actions 中生成，发布后必须补做线上清单与资产核验
-- 本机未安装 Inno Setup，未本地编译安装器；GitHub Actions 会安装 Inno Setup 并构建 Full/Lite Setup，成功前不得宣称 0.3.0 已发布完成
+- 本机未安装 Inno Setup，未本地编译安装器；0.3.1 GitHub Actions 会安装 Inno Setup 并构建 Full/Lite Setup，成功且八项资产在线核验通过前不得宣称修复发布完成
 
 ## 关键入口
 
@@ -104,7 +108,7 @@ git status --short --branch
 - 所有网络线路执行同一套签名、哈希、通道和包结构校验
 - 保留 Per-Monitor-V2 和目标显示器物理像素定位，不能重新用当前窗口的 WPF 变换换算另一块屏幕
 - 不提交密钥、令牌、代理凭据、用户配置、`bin/obj/temp`、日志和本地截图
-- 用户已授权本次 0.3.0 的提交、推送、标签和 Release；该授权不自动延续到后续版本或覆盖已发布资产
+- 用户已授权本次发布及因在线门禁失败产生的 0.3.1 修复提交、推送、标签和 Release；不覆盖 0.3.0 资产，该授权不自动延续到后续无关版本
 
 ## 维护规则
 

@@ -80,6 +80,7 @@ jobs:
               } | ConvertTo-Json -Compress
               [IO.File]::WriteAllText("temp/release-assets/update-$channel.json", $manifest, [Text.UTF8Encoding]::new($false))
             }
+            Copy-Item -LiteralPath 'temp/release-assets/update-lite.json' -Destination 'temp/release-assets/update.json'
           }
           finally {
             Remove-Item $key -Force -ErrorAction SilentlyContinue

@@ -1,27 +1,16 @@
-# GlyphEcho 0.3.0
+# GlyphEcho 0.3.1
 
-本版重做输入队列、手柄识别、模式策略、提示定位、界面风格与安全更新链路。
+修复 0.3.0 发布资产缺少通用 Lite 更新清单的问题；应用功能与 0.3.0 一致。
 
-## 新功能与改进
+## 修复
 
-- 提示按 200ms 窗口合并：重复组合键显示 `× N`，不同输入按到期顺序动态排队
-- XInput 支持左右摇杆八方向、双阈值死区和方向触发间隔；F13-F16 可映射为 M1-M4
-- 游戏模式支持低级/中级提示，演示模式展示输入来源与功能；切换后立即生效并保留各模式配置
-- 四个屏幕锚点分别支持持久化 X/Y 像素微调和一键重置
-- 主窗口、规则编辑器、更新窗口与确认框统一浅色 Acrylic、图标、间距和回退样式
-- 应用、托盘、安装器和窗口标题栏统一使用新的 GlyphEcho 笑脸 Logo
-
-## 修复与安全
-
-- 删除无协议依据的 Raw HID 背键猜测，避免右摇杆被误报为 M 键并循环触发
-- 使用目标显示器 DPI 与物理像素定位提示层，修复双屏边界跳跃
-- GitHub 前缀线路与 HTTP 代理使用统一故障转移，并保持签名、哈希、版本和通道校验
-- 更新包增加大小、结构、路径穿越、符号链接和跨通道检查；外部更新器使用暂存、备份与失败回滚
-- 保留 0.2.1 客户端兼容签名，同时新增覆盖产品、通道、大小和更新说明的 V2 签名
+- 新增兼容入口 `update.json`，内容与已签名的 `update-lite.json` 完全一致
+- 保留 `update-lite.json` 和 `update-full.json` 专用通道，所有线路继续执行相同的签名、哈希、版本、大小和包结构校验
+- 0.3.0 用户可直接安装本版，现有 `%LOCALAPPDATA%\GlyphEcho` 设置保持不变
 
 ## 下载
 
-- `GlyphEcho-0.3.0-Full-Setup.exe` / `GlyphEcho-0.3.0-Lite-Setup.exe`
-- `GlyphEcho-0.3.0-Full.zip` / `GlyphEcho-0.3.0-Lite.zip`
+- `GlyphEcho-0.3.1-Full-Setup.exe` / `GlyphEcho-0.3.1-Lite-Setup.exe`
+- `GlyphEcho-0.3.1-Full.zip` / `GlyphEcho-0.3.1-Lite.zip`
 
 Lite 包需要 .NET 8 Desktop Runtime；Full 包已包含运行时。

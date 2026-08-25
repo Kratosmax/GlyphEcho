@@ -67,7 +67,7 @@ $env:KEYOVERLAY_DATA_DIR = ".\temp\visual-qa-data"
 - `GamepadHook.cs`：XInput 轮询
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
 - `OverlayQueue.cs`、`OverlayWindow.Queue.cs`：200ms 动态提示队列和叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.3.0`）
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.3.1`）
 - `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
 - `GlyphEcho.SmokeTests/`：摇杆、队列、网络、签名和更新包结构回归
 - `VisualQaRunner.cs`：隔离、无输入控制的后台 UI 截图验收
