@@ -15,17 +15,17 @@ Get-Content .\GlyphEcho.csproj
 ## 当前快照
 
 - 最后本地核验：2026-08-25
-- 当前工作：准备发布 `0.2.0` 四资产版本
-- 本地提交基线：待提交（0.2.0 发布链改动）
-- 线上 Release：`0.1.0`，https://github.com/Kratosmax/GlyphEcho/releases/tag/0.1.0；`0.2.0` 尚未发布
-- 已验证：Release 构建、真实 EXE 启动 3 秒后关闭、本地预览包生成、线上 Release API 和三个资产
+- 当前工作：维护已发布的 `0.2.0` 四资产版本
+- 本地提交基线：待提交（发布记录修正）
+- 线上 Release：`0.2.0`，https://github.com/Kratosmax/GlyphEcho/releases/tag/0.2.0
+- 已验证：本地构建、Actions、四种资产、SHA256 清单、两个更新清单 RSA 签名
 
 ## 待办与阻塞
 
 - 已完成：创建公开仓库 `Kratosmax/GlyphEcho`，推送 `main` 和标签 `0.1.0`。
 - 已完成：四资产脚本、Inno Setup 定义、Actions 工作流、签名清单校验入口、独立更新器和回滚流程。
 - 已完成：`UPDATE_SIGNING_PRIVATE_KEY` 已写入 GitHub Actions Secret。
-- 待完成：推送 `0.2.0` 标签、Actions 首次运行和线上四资产核验。
+- 已完成：推送 `0.2.0` 标签、Actions 首次运行和线上四资产核验。
 - 未验证：飞智黑武士 4 Pro 的专属 HID 报告映射，需要真实设备。
 
 ## 验证矩阵
