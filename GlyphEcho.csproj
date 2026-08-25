@@ -8,10 +8,16 @@
     <Nullable>enable</Nullable>
     <AssemblyName>GlyphEcho</AssemblyName>
     <RootNamespace>GlyphEcho</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\GlyphEcho.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="Assets\GlyphEcho.png" />
+    <Resource Include="Assets\GlyphEcho.png" />
     <Compile Remove="GlyphEcho.Updater\**\*.cs" />
+    <Compile Remove="GlyphEcho.SmokeTests\**\*.cs" />
     <None Remove="GlyphEcho.Updater\**\*" />
+    <None Remove="GlyphEcho.SmokeTests\**\*" />
   </ItemGroup>
 </Project>

@@ -1,21 +1,27 @@
 param(
-    [string]$Version = "0.2.1",
+    [string]$Version,
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot ".."))
 )
 $ErrorActionPreference = "Stop"
 $project = Join-Path $Root "GlyphEcho.csproj"
 $updater = Join-Path $Root "GlyphEcho.Updater\GlyphEcho.Updater.csproj"
+$projectVersion = ([xml](Get-Content -Raw $project)).Project.PropertyGroup.Version
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = $projectVersion }
+if ($Version -ne $projectVersion) { throw "Requested version $Version does not match project version $projectVersion." }
 $buildRoot = Join-Path $Root "temp\package"
 $assetRoot = Join-Path $Root "temp\release-assets"
 Remove-Item $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $assetRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $buildRoot,$assetRoot | Out-Null
+& (Join-Path $Root "scripts\Generate-AppIcon.ps1") -Root $Root | Out-Null
 dotnet publish $project -c Release -r win-x64 --self-contained false -o (Join-Path $buildRoot "Lite")
 dotnet publish $project -c Release -r win-x64 --self-contained true -o (Join-Path $buildRoot "Full")
-dotnet publish $updater -c Release -r win-x64 --self-contained false -o (Join-Path $Root "temp\updater-lite")
-dotnet publish $updater -c Release -r win-x64 --self-contained true -o (Join-Path $Root "temp\updater-full")
+dotnet publish $updater -c Release -r win-x64 --self-contained false -p:Version=$Version -o (Join-Path $Root "temp\updater-lite")
+dotnet publish $updater -c Release -r win-x64 --self-contained true -p:Version=$Version -o (Join-Path $Root "temp\updater-full")
 Copy-Item (Join-Path $Root "temp\updater-lite\GlyphEcho.Updater.exe") (Join-Path $buildRoot "Lite") -Force
 Copy-Item (Join-Path $Root "temp\updater-full\GlyphEcho.Updater.exe") (Join-Path $buildRoot "Full") -Force
+[IO.File]::WriteAllText((Join-Path $buildRoot "Lite\.glyph-echo-channel"), "lite", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $buildRoot "Full\.glyph-echo-channel"), "full", [Text.UTF8Encoding]::new($false))
 Compress-Archive -Path (Join-Path $buildRoot "Lite\*") -DestinationPath (Join-Path $assetRoot "GlyphEcho-$Version-Lite.zip") -Force
 Compress-Archive -Path (Join-Path $buildRoot "Full\*") -DestinationPath (Join-Path $assetRoot "GlyphEcho-$Version-Full.zip") -Force
 if (Get-Command iscc -ErrorAction SilentlyContinue) {

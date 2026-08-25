@@ -1,0 +1,230 @@
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+const long MaximumPackageSize = 512L * 1024 * 1024;
+const long MaximumExpandedSize = 1024L * 1024 * 1024;
+const int MaximumEntries = 10000;
+const string PublicKeyPem = """
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxqcQFFVcy1q/hhK7Mxcc
+7Vt1mzAZv7ZVl6eLmI6Yy0SGAXkPUJtqLuu8xm9d83m/OisTUO8kKtqxpLXgnXru
+VAipKyX0b71dfEUWvO9gd5hYRcRqQmFTJ2SA/Ig7yjV44Dn1ieh38S1DuoB9vj5J
+A91FAtJeE61prCM+J44z4cx07p9IPnY5yfpdn4UnjOv3kwDZVCcpRALdtBWwwiMH
+FcSIUI732pEGJC/dKxeMiXbnVEaQpnuhhFDnle9ODEoI9OzcliUMa9aVRBrNUKYv
+r/TXvsiLTt4i71UeFbMEQTx3RFFqeB097qHOJbB+JwEdEYUzzfDqqSx7RgkYTzq5
+HQIDAQAB
+-----END PUBLIC KEY-----
+""";
+
+if (args is ["--self-test"]) return RunSelfTest();
+
+try
+{
+    var options = ParseArguments(args);
+    var package = Path.GetFullPath(Required(options, "package"));
+    var manifestPath = Path.GetFullPath(Required(options, "manifest"));
+    var target = Path.GetFullPath(Required(options, "target")).TrimEnd(Path.DirectorySeparatorChar);
+    var channel = Required(options, "channel");
+    if (!int.TryParse(Required(options, "pid"), out var pid)) return 2;
+    ValidateInputs(package, manifestPath, target);
+    var manifest = ReadAndVerifyManifest(manifestPath, channel);
+    VerifyPackage(package, manifest);
+    try { using var process = Process.GetProcessById(pid); if (!process.WaitForExit(30000)) return 3; } catch (ArgumentException) { }
+
+    var stage = Path.Combine(Path.GetTempPath(), "GlyphEcho-stage-" + Guid.NewGuid().ToString("N"));
+    var backup = target + ".backup-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+    Directory.CreateDirectory(stage);
+    try
+    {
+        ExtractValidated(package, stage);
+        ValidateStagedChannel(stage, channel);
+        ValidateStagedVersion(stage, manifest.Version);
+        Directory.Move(target, backup);
+        try
+        {
+            Directory.Move(stage, target);
+            Directory.Delete(backup, true);
+        }
+        catch
+        {
+            if (Directory.Exists(target)) Directory.Delete(target, true);
+            Directory.Move(backup, target);
+            throw;
+        }
+    }
+    finally
+    {
+        if (Directory.Exists(stage)) Directory.Delete(stage, true);
+    }
+
+    File.Delete(package);
+    File.Delete(manifestPath);
+    var start = new ProcessStartInfo(Path.Combine(target, "GlyphEcho.exe")) { WorkingDirectory = target, UseShellExecute = true };
+    start.ArgumentList.Add("--updated-from");
+    start.ArgumentList.Add(manifest.Version);
+    _ = Process.Start(start);
+    return 0;
+}
+catch (Exception ex)
+{
+    try
+    {
+        var logRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GlyphEcho", "logs");
+        Directory.CreateDirectory(logRoot);
+        File.WriteAllText(Path.Combine(logRoot, "update-failed.log"), ex.ToString());
+    }
+    catch { }
+    return 4;
+}
+
+static Dictionary<string, string> ParseArguments(string[] values)
+{
+    var result = new Dictionary<string, string>(StringComparer.Ordinal);
+    for (var index = 0; index + 1 < values.Length; index += 2)
+    {
+        if (!values[index].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException("更新器参数格式无效。");
+        result[values[index][2..]] = values[index + 1];
+    }
+    return result;
+}
+
+static string Required(IReadOnlyDictionary<string, string> values, string name) =>
+    values.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value : throw new ArgumentException($"缺少参数：{name}");
+
+static void ValidateInputs(string package, string manifest, string target)
+{
+    if (!File.Exists(package) || !File.Exists(manifest) || !Directory.Exists(target)) throw new FileNotFoundException("更新输入文件或目标目录不存在。");
+    if (!File.Exists(Path.Combine(target, "GlyphEcho.exe"))) throw new InvalidOperationException("目标目录不是 GlyphEcho 安装目录。");
+    var updateRoot = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GlyphEcho", "updates")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+    if (!package.StartsWith(updateRoot, StringComparison.OrdinalIgnoreCase) || !manifest.StartsWith(updateRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新文件不在 GlyphEcho 受控缓存目录中。");
+}
+
+static Manifest ReadAndVerifyManifest(string path, string expectedChannel)
+{
+    var json = File.ReadAllText(path, Encoding.UTF8);
+    if (Encoding.UTF8.GetByteCount(json) > 64 * 1024) throw new InvalidDataException("更新清单超过允许大小。");
+    var manifest = JsonSerializer.Deserialize<Manifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = false, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow }) ?? throw new InvalidDataException("更新清单为空。");
+    if (manifest.Product != "GlyphEcho" || !manifest.Channel.Equals(expectedChannel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新清单产品或通道不匹配。");
+    if (!Version.TryParse(manifest.Version, out var version) || version.Build < 0 || version.Revision >= 0) throw new InvalidDataException("更新版本必须是三段数字版本。");
+    if (manifest.Size <= 0 || manifest.Size > MaximumPackageSize || manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("更新包大小或哈希格式无效。");
+    if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "github.com" || !uri.AbsolutePath.StartsWith("/Kratosmax/GlyphEcho/releases/download/", StringComparison.Ordinal)) throw new InvalidDataException("更新下载地址不受信任。");
+    var signatureText = string.IsNullOrWhiteSpace(manifest.SignatureV2) ? manifest.Signature : manifest.SignatureV2;
+    var payload = string.IsNullOrWhiteSpace(manifest.SignatureV2)
+        ? $"{manifest.Version}\n{manifest.DownloadUrl}\n{manifest.Sha256}"
+        : string.Join('\n', manifest.Product, manifest.Channel, manifest.Version, manifest.DownloadUrl, manifest.Size, manifest.Sha256.ToLowerInvariant(), manifest.ReleaseNotes);
+    byte[] signature;
+    try { signature = Convert.FromBase64String(signatureText); } catch (FormatException ex) { throw new InvalidDataException("更新清单签名格式无效。", ex); }
+    using var rsa = RSA.Create();
+    rsa.ImportFromPem(PublicKeyPem);
+    if (!rsa.VerifyData(Encoding.UTF8.GetBytes(payload), signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new CryptographicException("更新清单签名验证失败。");
+    return manifest;
+}
+
+static void VerifyPackage(string path, Manifest manifest)
+{
+    var info = new FileInfo(path);
+    if (info.Length != manifest.Size) throw new InvalidDataException("更新包大小不匹配。");
+    using var stream = File.OpenRead(path);
+    if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)) throw new CryptographicException("更新包哈希不匹配。");
+}
+
+static void ExtractValidated(string package, string stage)
+{
+    using var archive = ZipFile.OpenRead(package);
+    if (archive.Entries.Count == 0 || archive.Entries.Count > MaximumEntries) throw new InvalidDataException("更新包条目数量无效。");
+    var root = Path.GetFullPath(stage).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+    long expanded = 0;
+    foreach (var entry in archive.Entries)
+    {
+        if (((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000) throw new InvalidDataException("更新包包含不允许的符号链接。");
+        expanded += entry.Length;
+        if (expanded > MaximumExpandedSize) throw new InvalidDataException("更新包展开大小超出限制。");
+        var destination = Path.GetFullPath(Path.Combine(stage, entry.FullName));
+        if (!destination.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新包包含越界路径。");
+        if (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')) { Directory.CreateDirectory(destination); continue; }
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        entry.ExtractToFile(destination, true);
+    }
+}
+
+static void ValidateStagedVersion(string stage, string expectedVersion)
+{
+    var executable = Path.Combine(stage, "GlyphEcho.exe");
+    if (!File.Exists(executable)) throw new InvalidDataException("更新包缺少 GlyphEcho.exe。");
+    var actual = FileVersionInfo.GetVersionInfo(executable).ProductVersion?.Split('+')[0];
+    if (!string.Equals(actual, expectedVersion, StringComparison.Ordinal)) throw new InvalidDataException($"更新包版本不匹配：{actual ?? "未知"}。");
+}
+
+static void ValidateStagedChannel(string stage, string expectedChannel)
+{
+    var marker = Path.Combine(stage, ".glyph-echo-channel");
+    if (!File.Exists(marker)) throw new InvalidDataException("更新包缺少通道标记。");
+    var actual = File.ReadAllText(marker, Encoding.UTF8).Trim();
+    if (!actual.Equals(expectedChannel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新包通道不匹配。");
+}
+
+static int RunSelfTest()
+{
+    var root = Path.Combine(Path.GetTempPath(), "GlyphEcho-updater-self-test-" + Guid.NewGuid().ToString("N"));
+    var safeZip = Path.Combine(root, "safe.zip");
+    var unsafeZip = Path.Combine(root, "unsafe.zip");
+    var stage = Path.Combine(root, "stage");
+    Directory.CreateDirectory(root);
+    try
+    {
+        using (var archive = ZipFile.Open(safeZip, ZipArchiveMode.Create))
+        {
+            using var writer = new StreamWriter(archive.CreateEntry("GlyphEcho.exe").Open(), Encoding.UTF8);
+            writer.Write("test");
+            writer.Dispose();
+            using var channelWriter = new StreamWriter(archive.CreateEntry(".glyph-echo-channel").Open(), Encoding.UTF8);
+            channelWriter.Write("lite");
+        }
+        ExtractValidated(safeZip, stage);
+        if (!File.Exists(Path.Combine(stage, "GlyphEcho.exe"))) throw new InvalidOperationException("安全 ZIP 未正确展开。");
+        ValidateStagedChannel(stage, "lite");
+        try
+        {
+            ValidateStagedChannel(stage, "full");
+            throw new InvalidOperationException("跨通道包未被拒绝。");
+        }
+        catch (InvalidDataException) { }
+        Directory.Delete(stage, true);
+
+        using (var archive = ZipFile.Open(unsafeZip, ZipArchiveMode.Create))
+        {
+            using var writer = new StreamWriter(archive.CreateEntry("../escape.txt").Open(), Encoding.UTF8);
+            writer.Write("blocked");
+        }
+        try
+        {
+            ExtractValidated(unsafeZip, stage);
+            throw new InvalidOperationException("越界 ZIP 未被拒绝。");
+        }
+        catch (InvalidDataException) { }
+        Console.WriteLine("PASS 更新包路径穿越保护");
+        return 0;
+    }
+    finally
+    {
+        if (Directory.Exists(root)) Directory.Delete(root, true);
+    }
+}
+
+internal sealed class Manifest
+{
+    [JsonPropertyName("product")] public string Product { get; init; } = string.Empty;
+    [JsonPropertyName("channel")] public string Channel { get; init; } = string.Empty;
+    [JsonPropertyName("version")] public string Version { get; init; } = string.Empty;
+    [JsonPropertyName("downloadUrl")] public string DownloadUrl { get; init; } = string.Empty;
+    [JsonPropertyName("size")] public long Size { get; init; }
+    [JsonPropertyName("sha256")] public string Sha256 { get; init; } = string.Empty;
+    [JsonPropertyName("signature")] public string Signature { get; init; } = string.Empty;
+    [JsonPropertyName("signatureV2")] public string SignatureV2 { get; init; } = string.Empty;
+    [JsonPropertyName("releaseNotes")] public string ReleaseNotes { get; init; } = string.Empty;
+    [JsonPropertyName("releaseNotesUrl")] public string ReleaseNotesUrl { get; init; } = string.Empty;
+}

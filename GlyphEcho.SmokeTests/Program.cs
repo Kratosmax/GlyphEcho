@@ -1,0 +1,192 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using GlyphEcho;
+
+var tests = new (string Name, Action Run)[]
+{
+    ("摇杆方向与死区", TestStickDirections),
+    ("提示队列合并与过期前移", TestOverlayQueue),
+    ("模式覆盖规则", TestModePolicy),
+    ("提示位置微调与持久化", TestOverlayOffsets),
+    ("更新线路规范化与排序", TestNetworkRoutes),
+    ("Legacy/V2 清单签名", TestManifestSignatures),
+    ("更新包结构与通道", TestPackageStructure)
+};
+
+var failed = 0;
+foreach (var test in tests)
+{
+    try { test.Run(); Console.WriteLine($"PASS {test.Name}"); }
+    catch (Exception ex) { failed++; Console.Error.WriteLine($"FAIL {test.Name}: {ex.Message}"); }
+}
+for (uint index = 0; index < 4; index++)
+    if (GamepadHook.TryReadSnapshot(index, out var gamepad))
+        Console.WriteLine($"INFO 手柄 {index + 1}: buttons=0x{gamepad.Buttons:X4}, LT={gamepad.LeftTrigger}, RT={gamepad.RightTrigger}, LS=({gamepad.LeftX},{gamepad.LeftY}), RS=({gamepad.RightX},{gamepad.RightY})");
+return failed == 0 ? 0 : 1;
+
+static void TestStickDirections()
+{
+    Equal(StickDirection.None, GamepadHook.ResolveDirection(8000, 0, StickDirection.None));
+    Equal(StickDirection.Right, GamepadHook.ResolveDirection(20000, 0, StickDirection.None));
+    Equal(StickDirection.Up, GamepadHook.ResolveDirection(0, 20000, StickDirection.None));
+    Equal(StickDirection.UpLeft, GamepadHook.ResolveDirection(-20000, 20000, StickDirection.None));
+    Equal(StickDirection.Right, GamepadHook.ResolveDirection(10000, 0, StickDirection.Right));
+    Equal(StickDirection.None, GamepadHook.ResolveDirection(8000, 0, StickDirection.Right));
+}
+
+static void TestOverlayQueue()
+{
+    var queue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
+    var start = DateTimeOffset.Parse("2026-08-25T00:00:00Z");
+    var copy = new OverlayPresentation("Ctrl + C", "Test", "", "", 2);
+    var paste = new OverlayPresentation("Ctrl + V", "Test", "", "", 2);
+    queue.Add(copy, start);
+    queue.Add(copy, start.AddMilliseconds(100));
+    queue.Add(paste, start.AddMilliseconds(250));
+    var initial = queue.Snapshot(start.AddMilliseconds(250));
+    Equal(2, initial.Count);
+    Equal(2, initial[0].Count);
+    Equal("Ctrl + V", queue.Snapshot(start.AddMilliseconds(1450))[0].Presentation.Display);
+}
+
+static void TestModePolicy()
+{
+    var configured = new DisplayRule { ShowSingleKeys = false, Level = 2, KeyRules = [new KeyRule { Key = "Ctrl + C", Enabled = true }] };
+    var normal = ModePolicy.Apply(configured, ModePolicy.Normal);
+    Equal(false, normal.ShowSingleKeys);
+    Equal(2, normal.Level);
+    var game = ModePolicy.Apply(configured, ModePolicy.Game);
+    Equal(true, game.ShowSingleKeys);
+    Equal(1, game.Level);
+    Equal(2, ModePolicy.Apply(configured, ModePolicy.Game, 2).Level);
+    Equal(1, ModePolicy.Apply(configured, ModePolicy.Game, 3).Level);
+    var presentation = ModePolicy.Apply(configured, ModePolicy.Presentation);
+    Equal(true, presentation.ShowSingleKeys);
+    Equal(3, presentation.Level);
+    Equal(false, configured.ShowSingleKeys);
+    Equal(2, configured.Level);
+}
+
+static void TestOverlayOffsets()
+{
+    var area = new System.Drawing.Rectangle(100, 50, 1000, 700);
+    var moved = NativeMethods.ResolveOverlayPosition(area, "右下", 160, 100, 18, -10, 6);
+    Equal(new System.Drawing.Point(912, 638), moved);
+    var clamped = NativeMethods.ResolveOverlayPosition(area, "右下", 160, 100, 18, 500, 500);
+    Equal(new System.Drawing.Point(940, 650), clamped);
+
+    var settings = KeySettings.Default;
+    settings.GetOverlayOffset("右下").X = -10;
+    settings.GetOverlayOffset("右下").Y = 6;
+    var restored = JsonSerializer.Deserialize<KeySettings>(JsonSerializer.Serialize(settings))!;
+    restored.NormalizeCatalog();
+    Equal(-10, restored.GetOverlayOffset("右下").X);
+    Equal(6, restored.GetOverlayOffset("右下").Y);
+    Equal(0, restored.GetOverlayOffset("右上").X);
+}
+
+static void TestNetworkRoutes()
+{
+    var settings = new UpdateNetworkSettings(
+    [
+        new GithubProxySetting("", 1, true),
+        new GithubProxySetting("https://proxy.example/", 8),
+        new GithubProxySetting("https://proxy.example", 5),
+        new GithubProxySetting("https://backup.example/github", 8)
+    ], "http://127.0.0.1:7890").Normalize();
+    Equal(3, settings.GithubProxies!.Count);
+    Equal("http://127.0.0.1:7890", settings.HttpProxy);
+    var routes = UpdateRouteBuilder.Build(new Uri("https://github.com/Kratosmax/GlyphEcho/releases/latest/download/update-lite.json"), settings);
+    Equal("proxy.example", routes[0].DisplayName);
+    Equal("backup.example", routes[1].DisplayName);
+    Equal("GitHub 直连", routes[2].DisplayName);
+    True(routes[0].RequestUri.AbsoluteUri.StartsWith("https://proxy.example/https://github.com/", StringComparison.Ordinal));
+    var untouched = UpdateRouteBuilder.Build(new Uri("https://example.com/file"), settings);
+    Equal("https://example.com/file", untouched[0].RequestUri.AbsoluteUri);
+}
+
+static void TestManifestSignatures()
+{
+    using var rsa = RSA.Create(2048);
+    var publicKey = rsa.ExportSubjectPublicKeyInfoPem();
+    var manifest = new UpdateManifest
+    {
+        Product = "GlyphEcho",
+        Channel = "lite",
+        Version = "0.3.0",
+        DownloadUrl = "https://github.com/Kratosmax/GlyphEcho/releases/download/0.3.0/GlyphEcho-0.3.0-Lite.zip",
+        Size = 1234,
+        Sha256 = new string('a', 64),
+        ReleaseNotes = "本次更新"
+    };
+    var legacySignature = Sign(rsa, UpdateService.LegacyPayload(manifest));
+    var legacyJson = JsonSerializer.Serialize(new
+    {
+        product = manifest.Product, channel = manifest.Channel, version = manifest.Version,
+        downloadUrl = manifest.DownloadUrl, size = manifest.Size, sha256 = manifest.Sha256,
+        signature = legacySignature, releaseNotes = manifest.ReleaseNotes, releaseNotesUrl = ""
+    });
+    Equal(new Version(0, 3, 0), UpdateService.ParseAndVerify(legacyJson, "lite", publicKey).Version);
+
+    var v2Signature = Sign(rsa, UpdateService.V2Payload(manifest));
+    var v2Json = JsonSerializer.Serialize(new
+    {
+        product = manifest.Product, channel = manifest.Channel, version = manifest.Version,
+        downloadUrl = manifest.DownloadUrl, size = manifest.Size, sha256 = manifest.Sha256,
+        signature = legacySignature, signatureV2 = v2Signature, releaseNotes = manifest.ReleaseNotes, releaseNotesUrl = ""
+    });
+    Equal(new Version(0, 3, 0), UpdateService.ParseAndVerify(v2Json, "lite", publicKey).Version);
+    var tamperedJson = JsonSerializer.Serialize(new
+    {
+        product = manifest.Product, channel = manifest.Channel, version = manifest.Version,
+        downloadUrl = manifest.DownloadUrl, size = manifest.Size, sha256 = manifest.Sha256,
+        signature = legacySignature, signatureV2 = v2Signature, releaseNotes = "已被篡改", releaseNotesUrl = ""
+    });
+    Throws<CryptographicException>(() => UpdateService.ParseAndVerify(tamperedJson, "lite", publicKey));
+}
+
+static void TestPackageStructure()
+{
+    var root = Path.Combine(Path.GetTempPath(), "GlyphEcho-package-test-" + Guid.NewGuid().ToString("N"));
+    var package = Path.Combine(root, "package.zip");
+    Directory.CreateDirectory(root);
+    try
+    {
+        using (var archive = System.IO.Compression.ZipFile.Open(package, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteEntry(archive, "GlyphEcho.exe", "app");
+            WriteEntry(archive, "GlyphEcho.Updater.exe", "updater");
+            WriteEntry(archive, ".glyph-echo-channel", "lite");
+        }
+        UpdateService.VerifyPackageStructure(package, "lite");
+        Throws<InvalidDataException>(() => UpdateService.VerifyPackageStructure(package, "full"));
+    }
+    finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+}
+
+static void WriteEntry(System.IO.Compression.ZipArchive archive, string name, string value)
+{
+    using var writer = new StreamWriter(archive.CreateEntry(name).Open(), new UTF8Encoding(false));
+    writer.Write(value);
+}
+
+static string Sign(RSA rsa, string payload) => Convert.ToBase64String(
+    rsa.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+
+static void Equal<T>(T expected, T actual)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"期望 {expected}，实际 {actual}");
+}
+
+static void True(bool value)
+{
+    if (!value) throw new InvalidOperationException("条件不成立");
+}
+
+static void Throws<T>(Action action) where T : Exception
+{
+    try { action(); }
+    catch (T) { return; }
+    throw new InvalidOperationException($"预期抛出 {typeof(T).Name}");
+}

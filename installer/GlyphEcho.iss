@@ -1,6 +1,6 @@
 #define MyAppName "GlyphEcho"
 #ifndef APP_VERSION
-  #define APP_VERSION "0.2.1"
+  #error APP_VERSION must be provided by the release build
 #endif
 #ifndef MODE
   #define MODE "Lite"
@@ -23,6 +23,7 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 ChangesAssociations=no
+SetupIconFile=..\Assets\GlyphEcho.ico
 
 [Files]
 Source: "..\temp\package\{#MODE}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion

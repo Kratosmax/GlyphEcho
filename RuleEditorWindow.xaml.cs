@@ -18,10 +18,13 @@ public partial class RuleEditorWindow : Window
         InitializeComponent();
         NameBox.Text = rule.Name; EnabledBox.IsChecked = rule.Enabled; SingleBox.IsChecked = rule.ShowSingleKeys; UseGlobalCatalogBox.IsChecked = _useGlobalCatalog; DescriptionBox.Text = rule.Description; LevelBox.SelectedIndex = Math.Clamp(rule.Level - 1, 0, 2); PriorityBox.SelectedIndex = Math.Clamp(rule.Priority, 0, 2);
         LoadKeys();
-        if (defaultRule) { ProcessSelect.ItemsSource = new[] { new ProcessTarget("默认规则（不绑定进程）", "") }; ProcessSelect.SelectedIndex = 0; ProcessSelect.IsEnabled = false; PriorityBox.IsEnabled = false; UseGlobalCatalogBox.IsEnabled = false; }
+        if (defaultRule) { ProcessSelect.DisplayMemberPath = nameof(ProcessTarget.Label); ProcessSelect.SelectedValuePath = nameof(ProcessTarget.Path); ProcessSelect.ItemsSource = new[] { new ProcessTarget("默认规则（不绑定进程）", "") }; ProcessSelect.SelectedIndex = 0; ProcessSelect.IsEnabled = false; PriorityBox.IsEnabled = false; UseGlobalCatalogBox.IsEnabled = false; }
         else Loaded += async (_, _) => await LoadProcessesAsync();
         RefreshKeys();
     }
+
+    private void Window_SourceInitialized(object? sender, EventArgs e) =>
+        NativeMethods.ApplyBackdrop(this, RootSurface, App.Settings.EnableMaterial);
 
     private void LoadKeys()
     {
@@ -45,7 +48,7 @@ public partial class RuleEditorWindow : Window
     private void CatalogMode_Changed(object sender, RoutedEventArgs e) { if (!IsInitialized || _defaultRule) return; _useGlobalCatalog = UseGlobalCatalogBox.IsChecked == true; LoadKeys(); RefreshKeys(); }
     private void DeleteKey_Click(object sender, RoutedEventArgs e) { if ((sender as FrameworkElement)?.DataContext is not KeyRule key) return; if (_useGlobalCatalog && _catalog.Any(x => KeyboardHook.NormalizeForRule(x.Key).Equals(KeyboardHook.NormalizeForRule(key.Key), StringComparison.OrdinalIgnoreCase))) key.Enabled = false; else _keys.Remove(key); RefreshKeys(); }
     private List<KeyRule> BuildOverrides() { var overrides = new List<KeyRule>(); foreach (var current in _keys) { var baseline = _catalog.FirstOrDefault(x => KeyboardHook.NormalizeForRule(x.Key).Equals(KeyboardHook.NormalizeForRule(current.Key), StringComparison.OrdinalIgnoreCase)); if (baseline is null || baseline.Enabled != current.Enabled || !string.Equals(baseline.Description, current.Description, StringComparison.Ordinal)) overrides.Add(current.Clone()); } return overrides; }
-    private void Save_Click(object sender, RoutedEventArgs e) { var path = ProcessSelect.SelectedValue as string ?? string.Empty; if (!_defaultRule && path.Length == 0) { System.Windows.MessageBox.Show("请选择一个带绝对路径的目标进程。", "规则不完整", MessageBoxButton.OK, MessageBoxImage.Warning); return; } _rule.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? Path.GetFileNameWithoutExtension(path) : NameBox.Text.Trim(); _rule.ProcessPath = path; _rule.Process = path.Length == 0 ? string.Empty : Path.GetFileNameWithoutExtension(path); _rule.Description = DescriptionBox.Text.Trim(); _rule.Enabled = EnabledBox.IsChecked == true; _rule.ShowSingleKeys = SingleBox.IsChecked == true; _rule.UseGlobalCatalog = _defaultRule || _useGlobalCatalog; _rule.Level = LevelBox.SelectedIndex + 1; _rule.Priority = _defaultRule ? 0 : PriorityBox.SelectedIndex; _rule.KeyRules = _useGlobalCatalog ? BuildOverrides() : [.. _keys]; DialogResult = true; }
+    private void Save_Click(object sender, RoutedEventArgs e) { var path = ProcessSelect.SelectedValue as string ?? string.Empty; if (!_defaultRule && path.Length == 0) { AppDialog.ShowMessage(this, "规则不完整", "请选择一个带绝对路径的目标进程。"); return; } _rule.Name = string.IsNullOrWhiteSpace(NameBox.Text) ? Path.GetFileNameWithoutExtension(path) : NameBox.Text.Trim(); _rule.ProcessPath = path; _rule.Process = path.Length == 0 ? string.Empty : Path.GetFileNameWithoutExtension(path); _rule.Description = DescriptionBox.Text.Trim(); _rule.Enabled = EnabledBox.IsChecked == true; _rule.ShowSingleKeys = SingleBox.IsChecked == true; _rule.UseGlobalCatalog = _defaultRule || _useGlobalCatalog; _rule.Level = LevelBox.SelectedIndex + 1; _rule.Priority = _defaultRule ? 0 : PriorityBox.SelectedIndex; _rule.KeyRules = _useGlobalCatalog ? BuildOverrides() : [.. _keys]; DialogResult = true; }
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 }
 public sealed record ProcessTarget(string Label, string Path);

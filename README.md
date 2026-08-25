@@ -1,6 +1,6 @@
 # GlyphEcho
 
-GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键盘、XInput 手柄和通用 HID 手柄，在不抢焦点的叠加层中显示当前输入，并按前台应用规则决定展示范围、级别和样式。
+GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键盘和 XInput 手柄，在不抢焦点的叠加层中显示当前输入，并按前台应用规则决定展示范围、级别和样式。
 
 ## 使用者教程
 
@@ -14,19 +14,27 @@ GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键�
 
 Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。
 
-主窗口提供三个页面：概览、应用规则、按键目录。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项。
+主窗口提供四个页面：概览、应用规则、按键目录、网络与更新。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项。
+
+模式切换会立即保存并作用于键盘、手柄和预览：普通模式遵循默认规则与应用规则；游戏模式强制显示单键，并允许选择低级或中级提示；演示模式强制显示单键并展示按键来源与功能说明。模式下拉框和各选项提供悬浮说明，被模式覆盖的设置会暂时禁用，切回普通模式后恢复原配置。
+
+四个展示位置分别保存 X/Y 像素微调，X 正数向右、Y 正数向下。例如把“右下”的 X 设为 `-10`，以后在任意显示器选择“右下”都会向左偏移 10 个物理像素；“重置当前位置”只清零当前锚点。为避免提示完全移出屏幕，最终坐标会限制在目标显示器工作区内。
 
 “网络与更新”页提供 Lite/Full 通道选择、GitHub 更新源连通性测试、签名清单检查和安全更新入口。纯 Shift 文本输入（例如 `Shift + 1`、`Shift + /`）不会自动写入快捷键目录。
 
+GitHub 前缀线路和 HTTP 网络代理是两层独立设置：前缀线路会把完整 GitHub 下载 URL 交给所选第三方服务；HTTP 代理只负责底层出网。无论使用哪条线路，程序都会执行相同的清单签名、包大小、SHA-256、通道和 ZIP 结构校验。
+
 ### 手柄
 
-标准 XInput 手柄支持 A/B/X/Y、方向键、肩键、扳机、摇杆和 Start/Back。通用 HID 扩展按键使用 `M1`、`M2`、`M3`、`M4` 缩写。飞智黑武士 4 Pro 的专属 HID 报告映射需要连接真实设备后确认，当前不会假定固定 VID/PID 或报告布局。
+标准 XInput 手柄支持 A/B/X/Y、方向键、肩键、扳机、左右摇杆八方向和 Start/Back。摇杆使用进入/退出双阈值死区，方向事件最短间隔为 200ms。飞智黑武士 4 Pro 在当前系统只暴露标准 XInput 接口，M1-M4 没有可验证的独立字段；请在飞智空间站把背键映射为 F13-F16，GlyphEcho 会依次显示为 M1-M4。程序不再猜测未知 Raw HID 字节，避免把右摇杆误报为 M 键。
+
+提示层每 200ms 合并一次输入：相同组合键显示 `× N`，不同组合键按队列展示并在到期后依次前移。
 
 ### 配置与故障排查
 
 默认配置位置为 `%LOCALAPPDATA%\GlyphEcho\settings.json`。测试或隔离运行时可设置 `KEYOVERLAY_DATA_DIR` 环境变量；该变量名称为旧版本兼容入口。配置损坏时程序会先备份原文件并显示警告，不会静默覆盖用户数据。
 
-如果界面显示“监听失败”，请确认程序运行在 Windows 桌面会话，并检查是否有安全软件拦截低级键盘钩子。程序不会因为 XInput/HID 手柄不可用而阻止键盘功能。
+如果界面显示“监听失败”，请确认程序运行在 Windows 桌面会话，并检查是否有安全软件拦截低级键盘钩子。程序不会因为 XInput 手柄不可用而阻止键盘功能。
 
 ## 自行编译
 
@@ -36,10 +44,19 @@ Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便�
 dotnet restore .\GlyphEcho.csproj
 dotnet build .\GlyphEcho.csproj --configuration Release
 dotnet run --project .\GlyphEcho.csproj --configuration Release
-dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.2.1
+dotnet run --project .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release
+dotnet run --project .\GlyphEcho.Updater\GlyphEcho.Updater.csproj --configuration Release -- --self-test
+.\scripts\Build-Preview.ps1
 ```
 
-产物位于 `bin\Release\net8.0-windows`；本地预览包位于项目级 `temp\preview`。项目仅支持 Windows，Linux/macOS 不能替代真实桌面会话验证全局输入监听。
+产物位于 `bin\Release\net8.0-windows`；`Build-Preview.ps1` 会在项目级 `temp\preview` 生成标记为本地验收用途的 Lite 目录和 ZIP。预览名称包含 ICO 内容哈希，Logo 改变后会使用新路径，避免 Windows Explorer 复用旧图标缓存。项目仅支持 Windows，Linux/macOS 不能替代真实桌面会话验证全局输入监听。
+
+无需控制鼠标键盘即可生成真实 WPF 窗口截图：
+
+```powershell
+$env:KEYOVERLAY_DATA_DIR = ".\temp\visual-qa-data"
+.\bin\Release\net8.0-windows\GlyphEcho.exe --capture-ui ".\temp\ui-captures"
+```
 
 ## AI 继续开发
 
@@ -48,13 +65,14 @@ dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --se
 - `App.xaml.cs`：设置加载、单实例、托盘、规则合并和生命周期
 - `KeyboardHook.cs`：全局键盘钩子、按键规范化和前台进程识别
 - `GamepadHook.cs`：XInput 轮询
-- `HidGamepadHook.cs`：通用 Raw Input/HID 扩展按键入口
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
-- `OverlayWindow.xaml(.cs)`：叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.2.1`）
+- `OverlayQueue.cs`、`OverlayWindow.Queue.cs`：200ms 动态提示队列和叠加层展示
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.3.0`）
 - `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
+- `GlyphEcho.SmokeTests/`：摇杆、队列、网络、签名和更新包结构回归
+- `VisualQaRunner.cs`：隔离、无输入控制的后台 UI 截图验收
 - `.github/workflows/release.yml`：标签触发的四资产发布流水线
 
-必须保留：低级简约模式使用独立按键按钮、默认规则与应用规则的继承关系、配置原子写入、单实例限制、损坏配置备份、HID 扩展键使用通用 `M1-M4` 命名。禁止提交 `bin/`、`obj/`、`temp/`、用户配置、日志、令牌或私钥。
+必须保留：低级简约模式使用独立按键按钮、默认规则与应用规则的继承关系、配置原子写入、单实例限制、损坏配置备份，以及 F13-F16 到 M1-M4 的兼容映射。没有描述符或厂商协议证据时禁止恢复 Raw HID 位猜测。禁止提交 `bin/`、`obj/`、`temp/`、用户配置、日志、令牌或私钥。
 
 提交、推送、创建 Release 和覆盖线上资产是分开的授权动作；没有用户明确授权时只能停在本地提交。UI 或功能改动必须在真实 Windows 会话启动验证，并留下可重跑命令和产物路径。

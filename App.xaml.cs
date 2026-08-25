@@ -13,40 +13,52 @@ public partial class App : System.Windows.Application
     internal static OverlayWindow? Overlay { get; private set; }
     private KeyboardHook? _hook;
     private GamepadHook? _gamepad;
-    private HidGamepadHook? _hidGamepad;
     private Forms.NotifyIcon? _tray;
     private static readonly object SettingsGate = new();
     private static Mutex? _singleInstanceMutex;
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
     internal static bool HookRunning { get; private set; }
     internal static string? SettingsWarning { get; private set; }
+    internal static bool IsVisualQa { get; private set; }
+    internal static string? CaptureOutputDirectory { get; private set; }
     internal static void ExitApplication() { IsShuttingDown = true; Current.Shutdown(); }
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstanceMutex = new Mutex(true, "GlyphEcho.SingleInstance.0.1", out var created); if (!created) { System.Windows.MessageBox.Show("GlyphEcho 已经在运行中。", "GlyphEcho", MessageBoxButton.OK, MessageBoxImage.Information); Shutdown(); return; }
+        var captureIndex = Array.FindIndex(e.Args, value => value.Equals("--capture-ui", StringComparison.OrdinalIgnoreCase));
+        CaptureOutputDirectory = captureIndex >= 0 && captureIndex + 1 < e.Args.Length ? Path.GetFullPath(e.Args[captureIndex + 1]) : null;
+        IsVisualQa = CaptureOutputDirectory is not null || e.Args.Contains("--visual-qa", StringComparer.OrdinalIgnoreCase);
+        var mutexName = IsVisualQa ? "GlyphEcho.VisualQa.0.2" : "GlyphEcho.SingleInstance.0.1";
+        _singleInstanceMutex = new Mutex(true, mutexName, out var created); if (!created) { AppDialog.ShowMessage(null, "GlyphEcho", "GlyphEcho 已经在运行中。"); Shutdown(); return; }
         Settings = LoadSettings();
         Settings.NormalizeCatalog();
         SaveSettings();
         MainWindowInstance = new MainWindow();
         Overlay = new OverlayWindow();
-        _hook = new KeyboardHook();
-        _hook.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
-        HookRunning = _hook.Start();
-        _gamepad = new GamepadHook();
-        _gamepad.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
-        _hidGamepad = new HidGamepadHook(MainWindowInstance);
-        _hidGamepad.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
-        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Information, Visible = true, Text = "GlyphEcho" };
-        var menu = new Forms.ContextMenuStrip();
-        menu.Items.Add("打开设置", null, (_, _) => Dispatcher.Invoke(() => { MainWindowInstance?.Show(); MainWindowInstance?.Activate(); }));
-        menu.Items.Add("检查更新", null, async (_, _) => await CheckForUpdatesAsync());
-        menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(() => { IsShuttingDown = true; Shutdown(); }));
-        _tray.ContextMenuStrip = menu;
+        if (!IsVisualQa)
+        {
+            _hook = new KeyboardHook();
+            _hook.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
+            HookRunning = _hook.Start();
+            _gamepad = new GamepadHook();
+            _gamepad.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
+            _tray = new Forms.NotifyIcon { Icon = LoadApplicationIcon(), Visible = true, Text = "GlyphEcho" };
+            var menu = new Forms.ContextMenuStrip();
+            menu.Items.Add("打开设置", null, (_, _) => Dispatcher.Invoke(() => { MainWindowInstance?.Show(); MainWindowInstance?.Activate(); }));
+            menu.Items.Add("检查更新", null, async (_, _) => await CheckForUpdatesAsync());
+            menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(() => { IsShuttingDown = true; Shutdown(); }));
+            _tray.ContextMenuStrip = menu;
+        }
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         MainWindowInstance.UpdateListenerStatus(HookRunning);
-        if (!string.IsNullOrWhiteSpace(SettingsWarning)) System.Windows.MessageBox.Show(SettingsWarning, "GlyphEcho", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!string.IsNullOrWhiteSpace(SettingsWarning)) AppDialog.ShowMessage(MainWindowInstance, "GlyphEcho", SettingsWarning);
+        if (CaptureOutputDirectory is not null) MainWindowInstance.ShowActivated = false;
         MainWindowInstance.Show();
+        if (CaptureOutputDirectory is not null)
+            _ = Dispatcher.BeginInvoke(async () => await VisualQaRunner.RunAsync(MainWindowInstance, CaptureOutputDirectory));
+        else if (Settings.CheckForUpdates)
+            _ = CheckForUpdatesInBackgroundAsync(_lifetimeCancellation.Token);
     }
 
     private Task CheckForUpdatesAsync()
@@ -55,13 +67,41 @@ public partial class App : System.Windows.Application
         return Task.CompletedTask;
     }
 
+    private static async Task CheckForUpdatesInBackgroundAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            var channel = Settings.UpdateChannel;
+            var update = await UpdateService.CheckAsync(channel, Settings.UpdateNetwork, cancellationToken).ConfigureAwait(false);
+            if (update is null) return;
+            await Current.Dispatcher.InvokeAsync(() =>
+            {
+                if (IsShuttingDown || MainWindowInstance is null) return;
+                new UpdateWindow(update, Settings.UpdateNetwork, channel, Settings.EnableMaterial) { Owner = MainWindowInstance }.ShowDialog();
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception) { }
+    }
+
+    private static System.Drawing.Icon LoadApplicationIcon()
+    {
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(path) && System.Drawing.Icon.ExtractAssociatedIcon(path) is { } icon) return (System.Drawing.Icon)icon.Clone();
+        }
+        catch (Exception) { }
+        return (System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone();
+    }
+
     private static void OnDisplaySettingsChanged(object? sender, EventArgs e) => Current.Dispatcher.BeginInvoke(() => MainWindowInstance?.RefreshMonitors());
 
     internal static DisplayRule ResolveRule(string appPath)
     {
         var special = Settings.Rules.Where(x => x.Enabled && !string.IsNullOrWhiteSpace(x.ProcessPath) && x.ProcessPath.Equals(appPath, StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.Priority).FirstOrDefault();
-        if (special is null) return Settings.DefaultRule;
-        return new DisplayRule
+        var resolved = special is null ? Settings.DefaultRule : new DisplayRule
         {
             Name = string.IsNullOrWhiteSpace(special.Name) ? Settings.DefaultRule.Name : special.Name,
             Process = special.Process,
@@ -72,13 +112,14 @@ public partial class App : System.Windows.Application
             HiddenKeys = special.HiddenKeys.Count == 0 ? [.. Settings.DefaultRule.HiddenKeys] : [.. special.HiddenKeys],
             KeyRules = MergeKeyRules(special)
         };
+        return ModePolicy.Apply(resolved, Settings.Mode, Settings.GameModeLevel);
     }
     private static List<KeyRule> MergeKeyRules(DisplayRule special) { if (!special.UseGlobalCatalog) return [.. special.KeyRules.Select(x => x.Clone())]; var merged = Settings.GlobalKeyCatalog.Select(x => x.Clone()).ToList(); foreach (var overrideRule in special.KeyRules) { var normalized = KeyboardHook.NormalizeForRule(overrideRule.Key); var existing = merged.FirstOrDefault(x => KeyboardHook.NormalizeForRule(x.Key).Equals(normalized, StringComparison.OrdinalIgnoreCase)); if (existing is null) merged.Add(overrideRule.Clone()); else { existing.Enabled = overrideRule.Enabled; existing.Description = string.IsNullOrWhiteSpace(overrideRule.Description) ? existing.Description : overrideRule.Description; } } return merged; }
     internal static void RecordObservedKey(string display) { var normalized = KeyboardHook.NormalizeForRule(display); if (string.IsNullOrWhiteSpace(display) || Settings.IgnoredKeys.Any(x => KeyboardHook.NormalizeForRule(x).Equals(normalized, StringComparison.OrdinalIgnoreCase)) || Settings.GlobalKeyCatalog.Any(x => KeyboardHook.NormalizeForRule(x.Key).Equals(normalized, StringComparison.OrdinalIgnoreCase))) return; Settings.GlobalKeyCatalog.Add(new KeyRule { Key = display, Enabled = Settings.NewKeysEnabled, CreatedAt = DateTimeOffset.UtcNow }); Settings.DefaultRule.KeyRules = [.. Settings.GlobalKeyCatalog.Select(x => x.Clone())]; SaveSettings(); }
     internal static void SaveSettings() { lock (SettingsGate) { try { var path = TrySettingsPath(); if (path is null) return; var temp = path + ".tmp"; File.WriteAllText(temp, JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true })); File.Move(temp, path, true); } catch (Exception ex) { SettingsWarning ??= $"设置无法保存，程序仍可运行，但本次修改不会持久化。\n原因：{ex.Message}"; } } }
     private static KeySettings LoadSettings() { try { var path = TrySettingsPath(); return path is not null && File.Exists(path) ? JsonSerializer.Deserialize<KeySettings>(File.ReadAllText(path)) ?? KeySettings.Default : KeySettings.Default; } catch (Exception ex) { var path = TrySettingsPath(); if (path is not null && File.Exists(path)) { var backup = path + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".json"; try { File.Move(path, backup, true); SettingsWarning = $"设置文件无法读取，已备份为：{Path.GetFileName(backup)}\n原因：{ex.Message}"; } catch { SettingsWarning = $"设置文件无法读取，程序已使用默认设置。\n原因：{ex.Message}"; } } return KeySettings.Default; } }
     private static string? TrySettingsPath() { try { var dir = Environment.GetEnvironmentVariable("KEYOVERLAY_DATA_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GlyphEcho"); Directory.CreateDirectory(dir); return Path.Combine(dir, "settings.json"); } catch (Exception ex) { SettingsWarning ??= $"设置目录不可写，程序将使用临时设置运行。\n原因：{ex.Message}"; return null; } }
-    protected override void OnExit(ExitEventArgs e) { Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; _hook?.Dispose(); _gamepad?.Dispose(); _hidGamepad?.Dispose(); _tray?.Dispose(); Overlay?.Close(); if (_singleInstanceMutex is not null) { try { _singleInstanceMutex.ReleaseMutex(); } catch { } _singleInstanceMutex.Dispose(); } base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { _lifetimeCancellation.Cancel(); Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; _hook?.Dispose(); _gamepad?.Dispose(); _tray?.Dispose(); Overlay?.Close(); if (_singleInstanceMutex is not null) { try { _singleInstanceMutex.ReleaseMutex(); } catch { } _singleInstanceMutex.Dispose(); } _lifetimeCancellation.Dispose(); base.OnExit(e); }
 }
 
 public sealed class KeySettings
@@ -87,16 +128,30 @@ public sealed class KeySettings
     public List<KeyRule> GlobalKeyCatalog { get; set; } = [];
     public List<DisplayRule> Rules { get; set; } = [];
     public string Mode { get; set; } = "普通模式";
+    public int GameModeLevel { get; set; } = 1;
     public int MonitorIndex { get; set; }
     public string OverlayPosition { get; set; } = "右下";
+    public Dictionary<string, OverlayOffset> OverlayOffsets { get; set; } = CreateDefaultOffsets();
     public bool CloseToTray { get; set; } = true;
     public string Theme { get; set; } = "浅色";
     public bool CheckForUpdates { get; set; } = true;
+    public bool EnableMaterial { get; set; } = true;
     public string UpdateChannel { get; set; } = "lite";
+    public UpdateNetworkSettings UpdateNetwork { get; set; } = UpdateNetworkSettings.Default;
     public bool NewKeysEnabled { get; set; } = true;
     public List<string> IgnoredKeys { get; set; } = [];
     public static KeySettings Default => new() { DefaultRule = new DisplayRule { Name = "默认规则", Level = 2, Enabled = true, HiddenKeys = ["CapsLock", "NumLock", "Scroll"] }, Rules = [] };
-    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; DefaultRule.KeyRules = [.. GlobalKeyCatalog.Select(x => x.Clone())]; }
+    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; DefaultRule.KeyRules = [.. GlobalKeyCatalog.Select(x => x.Clone())]; GameModeLevel = GameModeLevel == 2 ? 2 : 1; OverlayOffsets ??= []; foreach (var position in OverlayPositions) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) OverlayOffsets[position] = new OverlayOffset(); else offset.Normalize(); } UpdateNetwork = (UpdateNetwork ?? UpdateNetworkSettings.Default).Normalize(); }
+    internal OverlayOffset GetOverlayOffset(string position) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) { offset = new OverlayOffset(); OverlayOffsets[position] = offset; } return offset; }
+    private static Dictionary<string, OverlayOffset> CreateDefaultOffsets() => OverlayPositions.ToDictionary(position => position, _ => new OverlayOffset());
+    private static readonly string[] OverlayPositions = ["右下", "右上", "左下", "左上"];
+}
+public sealed class OverlayOffset
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    internal void Normalize() { X = Math.Clamp(X, -5000, 5000); Y = Math.Clamp(Y, -5000, 5000); }
+    internal OverlayOffset Clone() => new() { X = X, Y = Y };
 }
 public sealed class DisplayRule
 {

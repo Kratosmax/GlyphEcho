@@ -25,6 +25,11 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
+      - name: Run smoke tests
+        shell: pwsh
+        run: |
+          dotnet run --project .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release
+          dotnet run --project .\GlyphEcho.Updater\GlyphEcho.Updater.csproj --configuration Release -- --self-test
       - name: Build packages
         shell: pwsh
         run: .\scripts\Build-ReleaseAssets.ps1 -Version "${{ steps.version.outputs.version }}"
@@ -39,22 +44,46 @@ jobs:
         run: |
           if ([string]::IsNullOrWhiteSpace($env:UPDATE_SIGNING_PRIVATE_KEY)) { throw "UPDATE_SIGNING_PRIVATE_KEY secret is required" }
           $key = Join-Path $env:RUNNER_TEMP 'glyph-echo-update-private.pem'
-          [IO.File]::WriteAllText($key, $env:UPDATE_SIGNING_PRIVATE_KEY)
-          foreach ($channel in @('lite','full')) {
-            $label = $channel.Substring(0,1).ToUpper()+$channel.Substring(1)
-            $name = "GlyphEcho-${{ steps.version.outputs.version }}-$label.zip"
-            $file = Join-Path 'temp/release-assets' $name
-            $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$name"
-            $payload = "${{ steps.version.outputs.version }}`n$url`n$sha"
-            $payloadFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-payload.txt"
-            $sigFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-signature.bin"
-            [IO.File]::WriteAllText($payloadFile, $payload, [Text.UTF8Encoding]::new($false))
-            openssl dgst -sha256 -sign $key -out $sigFile $payloadFile
-            $manifest = @{ product='GlyphEcho'; channel=$channel; version='${{ steps.version.outputs.version }}'; downloadUrl=$url; size=(Get-Item $file).Length; sha256=$sha; signature=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sigFile)); releaseNotesUrl="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" } | ConvertTo-Json -Compress
-            [IO.File]::WriteAllText("temp/release-assets/update-$channel.json", $manifest, [Text.UTF8Encoding]::new($false))
+          try {
+            [IO.File]::WriteAllText($key, $env:UPDATE_SIGNING_PRIVATE_KEY)
+            $releaseNotes = (Get-Content -Raw -Encoding UTF8 RELEASE_NOTES_CURRENT.md).TrimEnd("`r", "`n")
+            foreach ($channel in @('lite','full')) {
+              $label = $channel.Substring(0,1).ToUpper()+$channel.Substring(1)
+              $name = "GlyphEcho-${{ steps.version.outputs.version }}-$label.zip"
+              $file = Join-Path 'temp/release-assets' $name
+              $size = (Get-Item $file).Length
+              $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+              $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$name"
+              $legacyPayload = "${{ steps.version.outputs.version }}`n$url`n$sha"
+              $v2Payload = @('GlyphEcho', $channel, '${{ steps.version.outputs.version }}', $url, $size, $sha, $releaseNotes) -join "`n"
+              $legacyPayloadFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-legacy-payload.txt"
+              $v2PayloadFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-v2-payload.txt"
+              $legacySigFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-legacy-signature.bin"
+              $v2SigFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-v2-signature.bin"
+              [IO.File]::WriteAllText($legacyPayloadFile, $legacyPayload, [Text.UTF8Encoding]::new($false))
+              [IO.File]::WriteAllText($v2PayloadFile, $v2Payload, [Text.UTF8Encoding]::new($false))
+              openssl dgst -sha256 -sign $key -out $legacySigFile $legacyPayloadFile
+              if ($LASTEXITCODE -ne 0) { throw "Legacy manifest signing failed for $channel" }
+              openssl dgst -sha256 -sign $key -out $v2SigFile $v2PayloadFile
+              if ($LASTEXITCODE -ne 0) { throw "V2 manifest signing failed for $channel" }
+              $manifest = [ordered]@{
+                product='GlyphEcho'
+                channel=$channel
+                version='${{ steps.version.outputs.version }}'
+                downloadUrl=$url
+                size=$size
+                sha256=$sha
+                signature=[Convert]::ToBase64String([IO.File]::ReadAllBytes($legacySigFile))
+                signatureV2=[Convert]::ToBase64String([IO.File]::ReadAllBytes($v2SigFile))
+                releaseNotes=$releaseNotes
+                releaseNotesUrl="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+              } | ConvertTo-Json -Compress
+              [IO.File]::WriteAllText("temp/release-assets/update-$channel.json", $manifest, [Text.UTF8Encoding]::new($false))
+            }
           }
-          Remove-Item $key -Force
+          finally {
+            Remove-Item $key -Force -ErrorAction SilentlyContinue
+          }
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
