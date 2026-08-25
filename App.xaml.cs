@@ -49,20 +49,10 @@ public partial class App : System.Windows.Application
         MainWindowInstance.Show();
     }
 
-    private async Task CheckForUpdatesAsync()
+    private Task CheckForUpdatesAsync()
     {
-        try
-        {
-            var channel = string.Equals(Settings.UpdateChannel, "full", StringComparison.OrdinalIgnoreCase) ? "full" : "lite";
-            var manifest = await UpdateService.CheckAsync(channel);
-            if (manifest is not null && UpdateService.IsNewer(manifest))
-            {
-                var result = System.Windows.MessageBox.Show($"发现 GlyphEcho {manifest.Version}。\n是否下载并安装？", "GlyphEcho 更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
-                if (result == MessageBoxResult.Yes) await UpdateService.ApplyAsync(manifest);
-            }
-            else System.Windows.MessageBox.Show("当前已是最新版本。", "GlyphEcho 更新", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex) { System.Windows.MessageBox.Show($"检查更新失败，现有版本未受影响。\n原因：{ex.Message}", "GlyphEcho 更新", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        MainWindowInstance?.OpenNetworkAndCheck();
+        return Task.CompletedTask;
     }
 
     private static void OnDisplaySettingsChanged(object? sender, EventArgs e) => Current.Dispatcher.BeginInvoke(() => MainWindowInstance?.RefreshMonitors());
@@ -101,6 +91,7 @@ public sealed class KeySettings
     public string OverlayPosition { get; set; } = "右下";
     public bool CloseToTray { get; set; } = true;
     public string Theme { get; set; } = "浅色";
+    public bool CheckForUpdates { get; set; } = true;
     public string UpdateChannel { get; set; } = "lite";
     public bool NewKeysEnabled { get; set; } = true;
     public List<string> IgnoredKeys { get; set; } = [];

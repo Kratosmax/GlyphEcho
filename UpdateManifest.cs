@@ -28,7 +28,7 @@ HQIDAQAB
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("GlyphEcho/0.2.0");
         var json = await client.GetStringAsync(ManifestBase + $"update-{channel}.json", cancellationToken);
-        var manifest = JsonSerializer.Deserialize<UpdateManifest>(json);
+        var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (manifest is null) throw new InvalidDataException("更新清单为空");
         if (!string.Equals(manifest.Product, "GlyphEcho", StringComparison.Ordinal) || !string.Equals(manifest.Channel, channel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新清单产品或通道不匹配");
         if (!Verify(manifest)) throw new CryptographicException("更新清单签名无效");
