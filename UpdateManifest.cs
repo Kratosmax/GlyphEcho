@@ -26,7 +26,7 @@ HQIDAQAB
     internal static async Task<UpdateManifest?> CheckAsync(string channel, CancellationToken cancellationToken = default)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("GlyphEcho/0.2.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("GlyphEcho/0.2.1");
         var json = await client.GetStringAsync(ManifestBase + $"update-{channel}.json", cancellationToken);
         var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         if (manifest is null) throw new InvalidDataException("更新清单为空");

@@ -36,7 +36,7 @@ Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便�
 dotnet restore .\GlyphEcho.csproj
 dotnet build .\GlyphEcho.csproj --configuration Release
 dotnet run --project .\GlyphEcho.csproj --configuration Release
-dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.2.0
+dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.2.1
 ```
 
 产物位于 `bin\Release\net8.0-windows`；本地预览包位于项目级 `temp\preview`。项目仅支持 Windows，Linux/macOS 不能替代真实桌面会话验证全局输入监听。
@@ -51,7 +51,7 @@ dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --se
 - `HidGamepadHook.cs`：通用 Raw Input/HID 扩展按键入口
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
 - `OverlayWindow.xaml(.cs)`：叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.2.0`）
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.2.1`）
 - `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
 - `.github/workflows/release.yml`：标签触发的四资产发布流水线
 

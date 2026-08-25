@@ -1,6 +1,6 @@
 #define MyAppName "GlyphEcho"
 #ifndef APP_VERSION
-  #define APP_VERSION "0.2.0"
+  #define APP_VERSION "0.2.1"
 #endif
 #ifndef MODE
   #define MODE "Lite"
