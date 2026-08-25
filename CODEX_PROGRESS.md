@@ -15,11 +15,11 @@ Get-Content .\GlyphEcho.csproj
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`b47be9b02b5feedbf0853160ac8b89030d8418ba`
-- 当前状态：0.3.0 已发布但在线核验发现缺少兼容 `update.json`，按发布事故门禁保留原 Release 并准备 0.3.1 修复版；用户已授权继续提交、推送、标签和 Release
-- 远程状态：`main` 和 `0.3.0` 已推送；0.3.0 Actions 成功，但资产矩阵不完整，0.3.1 尚未发布
-- 当前工作：手柄、提示队列、双屏定位与位置微调、PinNote 风格 UI/毛玻璃、网络更新、模式即时切换、导航对齐、统一 Logo 和预览图标缓存规避已在工作树完成
-- 正式候选版本为 `0.3.1`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+- 提交基线：`0ee7d98d256e3d196bd877fef7b6ec957c49eb3c`
+- 当前状态：0.3.1 兼容清单修复版已发布；0.3.0 保留为缺少 `update.json` 的审计记录
+- 远程状态：`main`、`0.3.1` 标签和 Release 已推送；Actions `32871254644` 成功，GitHub `latest` 已指向 0.3.1
+- 当前工作：手柄、提示队列、双屏定位与位置微调、PinNote 风格 UI/毛玻璃、网络更新、模式即时切换、导航对齐、统一 Logo 和预览图标缓存规避已完成并发布
+- 当前正式版本为 `0.3.1`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
 
 ## 本轮实现
 
@@ -82,13 +82,15 @@ git status --short --branch
 - 0.3.1 本地预览包：`temp/preview/GlyphEcho-0.3.1-Lite-local-23028564.zip`，非正式 Release，285,290 字节，SHA-256 `166A3715FA8F5DAF88F165729F1C5DD0B87A375C4A3706E2A68647FFD815C6FE`
 - 0.3.1 后台 UI 验收：`temp/preview-ui-captures-031/ui-capture-status.json` 为 success；13 张真实窗口截图均由 `PrintWindow` 捕获，Acrylic 与 frame HRESULT 均为 0，双屏右下偏移位置保持正确
 - 0.3.1 本地发布 ZIP 展开验证：Lite 285,290 字节、SHA-256 `458963A064ED7ADECE095E22E9DC4F9C699A9A298413CABB23FDC0AAFA36F106`、7 项；Full 99,550,821 字节、SHA-256 `1926D1C58DA4B6556CA6CCA2E24F598953E21E94201977B3BD160EA60453FDDA`、466 项；通道标记分别为 `lite`/`full`，两个 EXE 文件版本均为 `0.3.1.0`
+- 0.3.1 云端流水线 `32871254644` 在 2 分 22 秒内成功；Release 为非草稿、非预发布，包含四个正式包、`SHA256SUMS.txt`、`update.json`、`update-lite.json`、`update-full.json` 共八项资产，兼容清单与 Lite 清单的 GitHub SHA-256 digest 和大小一致
+- 简单发布检查确认 GitHub `releases/latest` 返回 `0.3.1`；按用户指示停止大文件下载和客户端公钥深度验签
 
 ## 尚未验证
 
 - 未在本轮自动测试窗口内人工推动左右摇杆、按真实 M1-M4；XInput 连接和静止状态已确认
 - 飞智黑武士 4 Pro 当前只暴露标准 XInput 字段；原生 M1-M4 仍无可验证协议。需在飞智空间站将背键映射为 F13-F16 后实测
-- 未使用上一正式 Release 原始客户端对带真实私钥签名的候选包执行完整升级；正式签名只能在 GitHub Actions 中生成，发布后必须补做线上清单与资产核验
-- 本机未安装 Inno Setup，未本地编译安装器；0.3.1 GitHub Actions 会安装 Inno Setup 并构建 Full/Lite Setup，成功且八项资产在线核验通过前不得宣称修复发布完成
+- 未使用上一正式 Release 原始客户端执行完整升级，也未完成线上大文件重算和客户端内置公钥验签；用户明确要求停止深度验证，只保留简单 Release/latest/资产矩阵检查
+- 本机未安装 Inno Setup，未本地编译安装器；0.3.1 GitHub Actions 已成功构建并上传 Full/Lite Setup
 
 ## 关键入口
 
