@@ -24,7 +24,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstanceMutex = new Mutex(true, "GlyphEcho.SingleInstance.0.1", out var created); if (!created) { System.Windows.MessageBox.Show("KeyOverlay 已经在运行中。", "GlyphEcho", MessageBoxButton.OK, MessageBoxImage.Information); Shutdown(); return; }
+        _singleInstanceMutex = new Mutex(true, "GlyphEcho.SingleInstance.0.1", out var created); if (!created) { System.Windows.MessageBox.Show("GlyphEcho 已经在运行中。", "GlyphEcho", MessageBoxButton.OK, MessageBoxImage.Information); Shutdown(); return; }
         Settings = LoadSettings();
         Settings.NormalizeCatalog();
         SaveSettings();
