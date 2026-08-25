@@ -1,0 +1,3 @@
+<Window x:Class="GlyphEcho.OverlayWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Width="260" Height="70" WindowStyle="None" AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" Topmost="True" ShowActivated="False" ResizeMode="NoResize">
+ <Border x:Name="Surface" Background="#F2182529" BorderBrush="#D861D2C6" BorderThickness="1" CornerRadius="9" Padding="10,8"><StackPanel><TextBlock x:Name="Source" Foreground="#BBD0D2" FontSize="10"/><StackPanel x:Name="Keys" Orientation="Horizontal" Margin="0,5,0,0"/><TextBlock x:Name="Action" Foreground="#61D2C6" FontSize="10" Margin="0,5,0,0"/></StackPanel></Border>
+</Window>

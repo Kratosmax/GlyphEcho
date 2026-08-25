@@ -1,0 +1,31 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows.Input;
+
+namespace GlyphEcho;
+
+internal sealed class KeyboardHook : IDisposable
+{
+    private const int WhKeyboardLl = 13; private const int WmKeyDown = 0x100; private const int WmSysKeyDown = 0x104;
+    private nint _hook; private HookProc? _proc; public event EventHandler<KeyPressedEventArgs>? KeyPressed;
+    public bool Start() { _proc = Callback; using var p = Process.GetCurrentProcess(); using var m = p.MainModule; _hook = SetWindowsHookEx(WhKeyboardLl, _proc, GetModuleHandle(m?.ModuleName), 0); return _hook != 0; }
+    private nint Callback(int code, nint wParam, nint lParam) { if (code >= 0 && (wParam == WmKeyDown || wParam == WmSysKeyDown)) { var data = Marshal.PtrToStructure<Kbd>(lParam); var key = KeyInterop.KeyFromVirtualKey((int)data.VkCode); var mods = Keyboard.Modifiers; var info = ForegroundInfo(); var rule = App.ResolveRule(info.Path); var text = Format(key, mods, App.Settings.Mode == "游戏模式" || rule.ShowSingleKeys, rule.Level >= 3); var catalog = !IsModifierKey(key) && mods != ModifierKeys.None ? Format(key, mods, true, false) : string.Empty; if (!string.IsNullOrWhiteSpace(text)) KeyPressed?.Invoke(this, new KeyPressedEventArgs(text, info.Name, info.Path, catalog)); } return CallNextHookEx(_hook, code, wParam, lParam); }
+    private static string Format(Key key, ModifierKeys mods, bool allowSingle, bool detailed) { var modifierName = key switch { Key.LeftCtrl or Key.RightCtrl => "Ctrl", Key.LeftShift or Key.RightShift => "Shift", Key.LeftAlt or Key.RightAlt => "Alt", Key.LWin or Key.RWin => "Win", _ => string.Empty }; if (modifierName.Length > 0) { if (!allowSingle && mods == ModifierKeys.None) return string.Empty; return detailed ? key.ToString() : modifierName; } var parts = new List<string>(); if (mods.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl"); if (mods.HasFlag(ModifierKeys.Shift)) parts.Add("Shift"); if (mods.HasFlag(ModifierKeys.Alt)) parts.Add("Alt"); if (mods.HasFlag(ModifierKeys.Windows)) parts.Add("Win"); var name = FriendlyName(key); if (parts.Count == 0 && !allowSingle) return string.Empty; parts.Add(name); return string.Join(" + ", parts); }
+    private static string FriendlyName(Key key) { var raw = key.ToString(); return raw switch { "Return" => "Enter", "Escape" => "Esc", "Back" => "Backspace", "Tab" => "Tab", "Capital" => "Caps Lock", "Space" => "Space", "Prior" => "Page Up", "Next" => "Page Down", "PageUp" => "Page Up", "PageDown" => "Page Down", "Left" => "←", "Right" => "→", "Up" => "↑", "Down" => "↓", "Insert" => "Insert", "Delete" => "Delete", "Home" => "Home", "End" => "End", "NumLock" => "Num Lock", "Scroll" => "Scroll Lock", "Snapshot" => "Print Screen", "Apps" => "Menu", "OemQuestion" or "Oem2" => "/", "Oem5" => "\\", "Oem1" => ";", "Oem7" => "'", "OemComma" => ",", "OemMinus" => "-", "OemPeriod" => ".", "OemPlus" => "+", "Oem3" => "`", "Oem4" => "[", "Oem6" => "]", "Oem8" => "OEM 8", "Oem102" => "<", "D0" => "0", "D1" => "1", "D2" => "2", "D3" => "3", "D4" => "4", "D5" => "5", "D6" => "6", "D7" => "7", "D8" => "8", "D9" => "9", "NumPad0" => "Num 0", "NumPad1" => "Num 1", "NumPad2" => "Num 2", "NumPad3" => "Num 3", "NumPad4" => "Num 4", "NumPad5" => "Num 5", "NumPad6" => "Num 6", "NumPad7" => "Num 7", "NumPad8" => "Num 8", "NumPad9" => "Num 9", "Add" => "Num +", "Subtract" => "Num -", "Multiply" => "Num ×", "Divide" => "Num ÷", "Decimal" => "Num .", "Separator" => "Num ,", "System" => "系统键", "None" => "未知按键", _ => raw }; }
+    private static bool IsModifierKey(Key key) => key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin;
+    internal static string NormalizeForRule(string value) => value.Replace("LeftAlt", "Alt", StringComparison.OrdinalIgnoreCase).Replace("RightAlt", "Alt", StringComparison.OrdinalIgnoreCase).Replace("LeftCtrl", "Ctrl", StringComparison.OrdinalIgnoreCase).Replace("RightCtrl", "Ctrl", StringComparison.OrdinalIgnoreCase).Replace("LeftShift", "Shift", StringComparison.OrdinalIgnoreCase).Replace("RightShift", "Shift", StringComparison.OrdinalIgnoreCase).Replace("LWin", "Win", StringComparison.OrdinalIgnoreCase).Replace("RWin", "Win", StringComparison.OrdinalIgnoreCase).Replace("OemQuestion", "/", StringComparison.OrdinalIgnoreCase).Replace("Oem2", "/", StringComparison.OrdinalIgnoreCase).Replace("Oem5", "\\", StringComparison.OrdinalIgnoreCase).Replace("Oem1", ";", StringComparison.OrdinalIgnoreCase).Replace("Oem7", "'", StringComparison.OrdinalIgnoreCase);
+    internal static string GetForegroundProcessName() => ForegroundInfo().Name;
+    internal static string GetForegroundProcessPath() => ForegroundInfo().Path;
+    private static (string Name, string Path) ForegroundInfo() { var hwnd = GetForegroundWindow(); GetWindowThreadProcessId(hwnd, out var pid); try { using var p = Process.GetProcessById((int)pid); return (p.ProcessName, p.MainModule?.FileName ?? ""); } catch { return ("未知应用", ""); } }
+    public void Dispose() { if (_hook != 0) UnhookWindowsHookEx(_hook); _hook = 0; }
+    private delegate nint HookProc(int code, nint wParam, nint lParam); [StructLayout(LayoutKind.Sequential)] private struct Kbd { public uint VkCode, ScanCode, Flags, Time; public nint Extra; }
+    [DllImport("user32.dll")] static extern nint SetWindowsHookEx(int id, HookProc proc, nint mod, uint thread); [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(nint h); [DllImport("user32.dll")] static extern nint CallNextHookEx(nint h, int c, nint w, nint l); [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern nint GetModuleHandle(string? name); [DllImport("user32.dll")] static extern nint GetForegroundWindow(); [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(nint hwnd, out uint pid);
+}
+internal sealed class KeyPressedEventArgs : EventArgs
+{
+    public KeyPressedEventArgs(string display, string foregroundApp, string foregroundPath, string catalogKey) { Display = display; ForegroundApp = foregroundApp; ForegroundPath = foregroundPath; CatalogKey = catalogKey; }
+    public string Display { get; }
+    public string ForegroundApp { get; }
+    public string ForegroundPath { get; }
+    public string CatalogKey { get; }
+}
