@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ['*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Read and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content GlyphEcho.csproj)).Project.PropertyGroup.Version
+          if ("${{ github.ref_name }}" -ne $version) { throw "Tag ${{ github.ref_name }} does not match project version $version" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+      - name: Build packages
+        shell: pwsh
+        run: .\scripts\Build-ReleaseAssets.ps1 -Version "${{ steps.version.outputs.version }}"
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem temp/release-assets -File | ForEach-Object { $h=(Get-FileHash $_.FullName -Algorithm SHA256).Hash; "$h  $($_.Name)" } | Set-Content -Encoding utf8 temp/release-assets/SHA256SUMS.txt
+      - name: Create signed update manifests
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:UPDATE_SIGNING_PRIVATE_KEY)) { throw "UPDATE_SIGNING_PRIVATE_KEY secret is required" }
+          $key = Join-Path $env:RUNNER_TEMP 'glyph-echo-update-private.pem'
+          [IO.File]::WriteAllText($key, $env:UPDATE_SIGNING_PRIVATE_KEY)
+          foreach ($channel in @('lite','full')) {
+            $label = $channel.Substring(0,1).ToUpper()+$channel.Substring(1)
+            $name = "GlyphEcho-${{ steps.version.outputs.version }}-$label.zip"
+            $file = Join-Path 'temp/release-assets' $name
+            $sha = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$name"
+            $payload = "${{ steps.version.outputs.version }}`n$url`n$sha"
+            $payloadFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-payload.txt"
+            $sigFile = Join-Path $env:RUNNER_TEMP "glyph-echo-$channel-signature.bin"
+            [IO.File]::WriteAllText($payloadFile, $payload, [Text.UTF8Encoding]::new($false))
+            openssl dgst -sha256 -sign $key -out $sigFile $payloadFile
+            $manifest = @{ product='GlyphEcho'; channel=$channel; version='${{ steps.version.outputs.version }}'; downloadUrl=$url; size=(Get-Item $file).Length; sha256=$sha; signature=[Convert]::ToBase64String([IO.File]::ReadAllBytes($sigFile)); releaseNotesUrl="https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" } | ConvertTo-Json -Compress
+            [IO.File]::WriteAllText("temp/release-assets/update-$channel.json", $manifest, [Text.UTF8Encoding]::new($false))
+          }
+          Remove-Item $key -Force
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: temp/release-assets/*
+          generate_release_notes: true

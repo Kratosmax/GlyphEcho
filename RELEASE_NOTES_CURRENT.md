@@ -1,25 +1,28 @@
-# GlyphEcho 0.1.0
+# GlyphEcho 0.2.0
 
-首个可验证预览版本。
+完整发布链版本。
 
-## 功能
+## 新增
 
-- 全局键盘组合键监听与按键规范化
-- 默认规则、按前台进程覆盖规则和全局按键目录
-- 低、中、高三级展示级别
-- 低级简约模式使用独立按键按钮
-- XInput 标准手柄按键展示
-- 通用 HID 扩展按键预制为 `M1-M4`
-- 配置原子写入、损坏配置备份和单实例限制
-- 托盘常驻、关闭窗口缩小或退出可配置
+- Full/Lite ZIP 便携版
+- Full/Lite Inno Setup 安装器
+- GitHub Actions 标签发布流水线
+- RSA 签名的 Full/Lite 更新清单
+- 更新清单签名、版本、大小和 SHA-256 校验
+- 独立更新器：等待主进程退出、暂存解压、路径检查、替换失败回滚
+- 托盘中的更新检查和下载安装入口
 
 ## 下载选择
 
-- `GlyphEcho-0.1.0-Lite.zip`：需要目标机器已安装 .NET 8 Desktop Runtime。
-- `GlyphEcho-0.1.0-Full.zip`：包含 .NET 8 Windows Desktop Runtime，可直接运行，体积更大。
+- `GlyphEcho-0.2.0-Full-Setup.exe`：自包含安装器，不要求预装 .NET 8。
+- `GlyphEcho-0.2.0-Lite-Setup.exe`：需要 .NET 8 Desktop Runtime。
+- `GlyphEcho-0.2.0-Full.zip`：自包含便携版。
+- `GlyphEcho-0.2.0-Lite.zip`：依赖 .NET 8 Desktop Runtime 的便携版。
 
-当前没有安装器，因此本版本不提供 Setup 包。首次运行建议先在真实 Windows 桌面会话中确认键盘监听状态。
+## 安全说明
+
+更新清单使用仓库 Actions Secret 中的 RSA 私钥签名，客户端内置公钥并在下载前验证清单、版本、通道、大小和哈希。更新失败时保留备份并尝试回滚；若当前目录权限或文件占用阻止替换，现有版本不会被静默覆盖。
 
 ## 已知限制
 
-飞智黑武士 4 Pro 的厂商专属 HID 报告映射需要连接真实设备后确认；通用 HID 入口不会假定固定 VID/PID 或报告布局。
+飞智黑武士 4 Pro 的厂商专属 HID 报告映射仍需要连接真实设备后确认；通用 HID 入口不会假定固定 VID/PID 或报告布局。

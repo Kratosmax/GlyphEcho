@@ -10,28 +10,29 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.1.0`。当前默认分支为 `main`；远程仓库为 `git@github.com:Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.2.0`。当前默认分支为 `main`；远程仓库为 `git@github.com:Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-25
-- 当前工作：维护已发布的首个版本
-- 本地提交基线：`6ab1303 docs: add 0.1.0 release notes`
-- 线上 Release：`0.1.0`，https://github.com/Kratosmax/GlyphEcho/releases/tag/0.1.0
+- 当前工作：准备发布 `0.2.0` 四资产版本
+- 本地提交基线：待提交（0.2.0 发布链改动）
+- 线上 Release：`0.1.0`，https://github.com/Kratosmax/GlyphEcho/releases/tag/0.1.0；`0.2.0` 尚未发布
 - 已验证：Release 构建、真实 EXE 启动 3 秒后关闭、本地预览包生成、线上 Release API 和三个资产
 
 ## 待办与阻塞
 
 - 已完成：创建公开仓库 `Kratosmax/GlyphEcho`，推送 `main` 和标签 `0.1.0`。
-- 已完成：上传 Lite ZIP、Full ZIP 和 `SHA256SUMS.txt`。
-- 未做：GitHub Actions、安装器、自动更新签名清单。
+- 已完成：四资产脚本、Inno Setup 定义、Actions 工作流、签名清单校验入口、独立更新器和回滚流程。
+- 已完成：`UPDATE_SIGNING_PRIVATE_KEY` 已写入 GitHub Actions Secret。
+- 待完成：推送 `0.2.0` 标签、Actions 首次运行和线上四资产核验。
 - 未验证：飞智黑武士 4 Pro 的专属 HID 报告映射，需要真实设备。
 
 ## 验证矩阵
 
 ```powershell
 dotnet build .\GlyphEcho.csproj --configuration Release --disable-build-servers --no-restore
-dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.1.0
+dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.2.0
 git diff --check
 git status --short
 ```

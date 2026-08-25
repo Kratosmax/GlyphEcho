@@ -8,6 +8,10 @@
     <Nullable>enable</Nullable>
     <AssemblyName>GlyphEcho</AssemblyName>
     <RootNamespace>GlyphEcho</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="GlyphEcho.Updater\**\*.cs" />
+    <None Remove="GlyphEcho.Updater\**\*" />
+  </ItemGroup>
 </Project>

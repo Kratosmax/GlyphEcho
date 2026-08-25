@@ -12,7 +12,7 @@ GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键�
 
 ### 运行方式
 
-下载 Release 中的 Lite ZIP，解压后运行 `GlyphEcho.exe`。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。
+Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。
 
 主窗口提供三个页面：概览、应用规则、按键目录。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项。
 
@@ -34,7 +34,7 @@ GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键�
 dotnet restore .\GlyphEcho.csproj
 dotnet build .\GlyphEcho.csproj --configuration Release
 dotnet run --project .\GlyphEcho.csproj --configuration Release
-dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.1.0
+dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --self-contained false --output .\temp\preview\GlyphEcho-0.2.0
 ```
 
 产物位于 `bin\Release\net8.0-windows`；本地预览包位于项目级 `temp\preview`。项目仅支持 Windows，Linux/macOS 不能替代真实桌面会话验证全局输入监听。
@@ -49,7 +49,9 @@ dotnet publish .\GlyphEcho.csproj --configuration Release --runtime win-x64 --se
 - `HidGamepadHook.cs`：通用 Raw Input/HID 扩展按键入口
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
 - `OverlayWindow.xaml(.cs)`：叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.1.0`）
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.2.0`）
+- `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
+- `.github/workflows/release.yml`：标签触发的四资产发布流水线
 
 必须保留：低级简约模式使用独立按键按钮、默认规则与应用规则的继承关系、配置原子写入、单实例限制、损坏配置备份、HID 扩展键使用通用 `M1-M4` 命名。禁止提交 `bin/`、`obj/`、`temp/`、用户配置、日志、令牌或私钥。
 

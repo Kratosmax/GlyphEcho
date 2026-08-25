@@ -40,12 +40,29 @@ public partial class App : System.Windows.Application
         _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Information, Visible = true, Text = "GlyphEcho" };
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("打开设置", null, (_, _) => Dispatcher.Invoke(() => { MainWindowInstance?.Show(); MainWindowInstance?.Activate(); }));
+        menu.Items.Add("检查更新", null, async (_, _) => await CheckForUpdatesAsync());
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(() => { IsShuttingDown = true; Shutdown(); }));
         _tray.ContextMenuStrip = menu;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         MainWindowInstance.UpdateListenerStatus(HookRunning);
         if (!string.IsNullOrWhiteSpace(SettingsWarning)) System.Windows.MessageBox.Show(SettingsWarning, "GlyphEcho", MessageBoxButton.OK, MessageBoxImage.Warning);
         MainWindowInstance.Show();
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var channel = string.Equals(Settings.UpdateChannel, "full", StringComparison.OrdinalIgnoreCase) ? "full" : "lite";
+            var manifest = await UpdateService.CheckAsync(channel);
+            if (manifest is not null && UpdateService.IsNewer(manifest))
+            {
+                var result = System.Windows.MessageBox.Show($"发现 GlyphEcho {manifest.Version}。\n是否下载并安装？", "GlyphEcho 更新", MessageBoxButton.YesNo, MessageBoxImage.Information);
+                if (result == MessageBoxResult.Yes) await UpdateService.ApplyAsync(manifest);
+            }
+            else System.Windows.MessageBox.Show("当前已是最新版本。", "GlyphEcho 更新", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { System.Windows.MessageBox.Show($"检查更新失败，现有版本未受影响。\n原因：{ex.Message}", "GlyphEcho 更新", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private static void OnDisplaySettingsChanged(object? sender, EventArgs e) => Current.Dispatcher.BeginInvoke(() => MainWindowInstance?.RefreshMonitors());
@@ -84,6 +101,7 @@ public sealed class KeySettings
     public string OverlayPosition { get; set; } = "右下";
     public bool CloseToTray { get; set; } = true;
     public string Theme { get; set; } = "浅色";
+    public string UpdateChannel { get; set; } = "lite";
     public bool NewKeysEnabled { get; set; } = true;
     public List<string> IgnoredKeys { get; set; } = [];
     public static KeySettings Default => new() { DefaultRule = new DisplayRule { Name = "默认规则", Level = 2, Enabled = true, HiddenKeys = ["CapsLock", "NumLock", "Scroll"] }, Rules = [] };
