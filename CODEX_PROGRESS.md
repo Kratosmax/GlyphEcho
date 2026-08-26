@@ -15,11 +15,17 @@ Get-Content .\GlyphEcho.csproj
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`4b414e9987001d6f5791fed5ad58633db3af6ae9`
-- 当前状态：0.4.0 发布候选正在本地验证；0.3.1 仍是当前线上正式版
-- 远程状态：`main`、`0.3.1` 标签和 Release 已推送；Actions `32871254644` 成功，GitHub `latest` 已指向 0.3.1
-- 当前工作：Win10 图标兼容、按键目录批量删除、查重性能优化和当前用户开机自启已纳入 0.4.0 发布候选
-- 当前候选版本为 `0.4.0`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+- 提交基线：`ae3e116e0da5096295dca4de89571527909c6d38`（0.4.0 标签）
+- 当前状态：0.4.0 已发布；同盘自动升级成功，但非系统盘便携目录存在跨卷替换缺陷
+- 远程状态：`main`、`0.4.0` 标签和 Release 已推送；Actions `32923875405` 成功，GitHub `latest` 已指向 0.4.0
+- 当前工作：Win10 图标兼容、按键目录批量删除、查重性能优化和当前用户开机自启已随 0.4.0 发布
+- 当前正式版本为 `0.4.0`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+
+## 当前待办
+
+- P0：更新器 stage 使用系统 `%TEMP%`，当 GlyphEcho 便携目录位于另一卷时，`Directory.Move(stage, target)` 会失败；修复需发布新版本且不能覆盖 0.4.0
+- 0.3.1/0.4.0 非系统盘便携用户无法依靠现有自动更新器跨过该缺陷，需要在下一版 README 与 Release Notes 提供手动覆盖安装过渡说明
+- 新版本号、修复与再次发布尚未获得用户授权；在获得授权前不创建 0.4.1 标签或 Release
 
 ## 本轮实现
 
@@ -112,13 +118,15 @@ git status --short --branch
 - 简单发布检查确认 GitHub `releases/latest` 返回 `0.3.1`；按用户指示停止大文件下载和客户端公钥深度验签
 - 0.4.0 本地发布候选四包均已生成：Full Setup 73,454,156 字节、Lite Setup 2,597,139 字节、Full ZIP 102,743,180 字节、Lite ZIP 296,968 字节；两个 ZIP 分别含 466/7 项，通道为 `full`/`lite`，主程序和更新器文件版本均为 `0.4.0.0`
 - 0.4.0 候选包 SHA-256：Full Setup `806C7F8F2C0BBFDC7E97D91B01AE00A447CDA383C91F8A416C9F4DDCFCADD6D5`、Lite Setup `D40C62C0FACBDEE592EDBBADA8F19720AAA8D44B03EE8128C4151E637711DA9C`、Full ZIP `67A383DCDA6890BFEEAD614A7FEEB42FDECDC3451A3971D5F4532842610D51F7`、Lite ZIP `EB92FEF6F6A3A0E243BED16111D7E49D79163C22E9F39D1A5AE1A495ECE5CFCF`
+- 0.4.0 云端流水线 `32923875405` 在 2 分 24 秒内成功；Release 为非草稿、非预发布，包含四个正式包、`SHA256SUMS.txt`、`update.json`、`update-lite.json`、`update-full.json` 共八项资产，GitHub `latest` 已指向 0.4.0
+- 线上 Lite/Full 清单均通过客户端内置 RSA 公钥的 legacy 与 V2 签名验证；`update.json` 与 `update-lite.json` 的 GitHub digest 和大小一致，`SHA256SUMS.txt` 覆盖四个正式包
+- 上一正式版 0.3.1 原始 Lite 客户端在同盘 stage 条件下完成真实升级：发现更新、下载、验签、包预检、更新器替换均成功，最终 EXE 文件版本为 `0.4.0.0`；证据为 `temp/upgrade-031-to-040/upgrade-status-same-volume.json`
+- 跨卷回归稳定失败：目标目录在 D:、系统 `%TEMP%` 在 C: 时，0.3.1 更新器日志为 `Source and destination path must have identical roots`；0.4.0 的 `GlyphEcho.Updater/UpdaterProgram.cs` 仍用 `Path.GetTempPath()` 创建 stage，问题尚未修复
 
 ## 尚未验证
 
 - 未在本轮自动测试窗口内人工推动左右摇杆、按真实 M1-M4；XInput 连接和静止状态已确认
 - 飞智黑武士 4 Pro 当前只暴露标准 XInput 字段；原生 M1-M4 仍无可验证协议。需在飞智空间站将背键映射为 F13-F16 后实测
-- 未使用上一正式 Release 原始客户端执行完整升级，也未完成线上大文件重算和客户端内置公钥验签；用户明确要求停止深度验证，只保留简单 Release/latest/资产矩阵检查
-- 0.4.0 尚未完成上一正式 Release 原始客户端到线上候选包的完整升级链；发布后必须使用真实线上清单和资产补做
 
 ## 关键入口
 
