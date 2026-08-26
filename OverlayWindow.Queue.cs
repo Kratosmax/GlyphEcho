@@ -12,6 +12,7 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer _refresh = new() { Interval = TimeSpan.FromMilliseconds(200) };
     private readonly OverlayQueue _queue = new(TimeSpan.FromMilliseconds(1300));
     private readonly List<OverlayPresentation> _pending = [];
+    private long _renderedRevision = -1;
 
     public OverlayWindow()
     {
@@ -21,22 +22,22 @@ public partial class OverlayWindow : Window
     }
 
     internal void RefreshPosition() => Position();
-    internal void RefreshStyle() => RefreshQueue();
+    internal void RefreshStyle() { _renderedRevision = -1; RefreshQueue(); }
 
     internal void Present(string display, string app, DisplayRule rule)
     {
         var key = display.Split(" + ", StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? display;
         var normalizedDisplay = KeyboardHook.NormalizeForRule(display);
-        if (!rule.Enabled || rule.HiddenKeys.Contains(key, StringComparer.OrdinalIgnoreCase)) return;
-        var matchedRule = rule.KeyRules.FirstOrDefault(x =>
-            KeyboardHook.NormalizeForRule(x.Key).Equals(normalizedDisplay, StringComparison.OrdinalIgnoreCase));
-        if (matchedRule is null || !matchedRule.Enabled) return;
+        if (!rule.Enabled || rule.HiddenKeys.Any(hidden => KeyboardHook.NormalizeForRule(hidden).Equals(normalizedDisplay, StringComparison.OrdinalIgnoreCase) || hidden.Equals(key, StringComparison.OrdinalIgnoreCase))) return;
+        var matchedRule = rule.FindKeyRule(normalizedDisplay);
+        var isSingleKey = !display.Contains(" + ", StringComparison.Ordinal);
+        if (matchedRule is null && (!rule.ShowSingleKeys || !isSingleKey) || matchedRule is { Enabled: false }) return;
 
         _pending.Add(new OverlayPresentation(
             display,
             app,
             rule.Level >= 3 ? $"{ShortcutSource(display)} · {app}" : rule.Level == 2 ? app : string.Empty,
-            rule.Level >= 3 ? (string.IsNullOrWhiteSpace(rule.Description) ? "快捷键" : rule.Description) : string.Empty,
+            rule.Level >= 3 ? (!string.IsNullOrWhiteSpace(matchedRule?.Description) ? matchedRule.Description : string.IsNullOrWhiteSpace(rule.Description) ? "快捷键" : rule.Description) : string.Empty,
             rule.Level));
         if (!_refresh.IsEnabled) _refresh.Start();
     }
@@ -54,7 +55,9 @@ public partial class OverlayWindow : Window
             return;
         }
 
+        if (_renderedRevision == _queue.Revision && IsVisible) return;
         Render(items);
+        _renderedRevision = _queue.Revision;
         if (!IsVisible) Show();
         UpdateLayout();
         Position();
@@ -141,12 +144,13 @@ public partial class OverlayWindow : Window
     {
         var screens = Forms.Screen.AllScreens;
         if (screens.Length == 0) return;
-        var screen = screens[Math.Clamp(App.Settings.MonitorIndex, 0, screens.Length - 1)];
+        var screen = screens.FirstOrDefault(item => item.DeviceName.Equals(App.Settings.MonitorDeviceName, StringComparison.OrdinalIgnoreCase))
+            ?? screens[Math.Clamp(App.Settings.MonitorIndex, 0, screens.Length - 1)];
         var offset = App.Settings.GetOverlayOffset(App.Settings.OverlayPosition);
         _ = NativeMethods.PositionOverlay(this, screen.WorkingArea, App.Settings.OverlayPosition, 18, offset.X, offset.Y);
     }
 
-    private static string ShortcutSource(string display) => display is "Ctrl + C" or "Ctrl + V" or "Ctrl + X" or "Ctrl + Z" or "Ctrl + A" or "Ctrl + S"
-        ? "Windows 通用"
-        : "前台应用";
+    private static string ShortcutSource(string display) => display is "Ctrl + C" or "Ctrl + V" or "Ctrl + X" or "Ctrl + Z" or "Ctrl + A"
+        ? "常见通用快捷键"
+        : "当前应用（推测）";
 }

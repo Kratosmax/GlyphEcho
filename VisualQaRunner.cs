@@ -128,6 +128,7 @@ internal static class VisualQaRunner
             if (App.Overlay is { IsVisible: true } overlay)
             {
                 var previousMonitor = App.Settings.MonitorIndex;
+                var previousMonitorDeviceName = App.Settings.MonitorDeviceName;
                 var previousPosition = App.Settings.OverlayPosition;
                 var previousPalette = App.Settings.OverlayPalette;
                 var previousRightBottomOffset = App.Settings.GetOverlayOffset("右下").Clone();
@@ -136,6 +137,7 @@ internal static class VisualQaRunner
                     App.Settings.OverlayPalette = "dark-mint";
                     App.Settings.OverlayOffsets["右下"] = new OverlayOffset { X = -10, Y = 0 };
                     App.Settings.MonitorIndex = 0;
+                    App.Settings.MonitorDeviceName = Forms.Screen.AllScreens[0].DeviceName;
                     App.Settings.OverlayPosition = "右下";
                     overlay.RefreshStyle();
                     overlay.RefreshPosition();
@@ -146,6 +148,7 @@ internal static class VisualQaRunner
                     if (Forms.Screen.AllScreens.Length > 1)
                     {
                         App.Settings.MonitorIndex = 1;
+                        App.Settings.MonitorDeviceName = Forms.Screen.AllScreens[1].DeviceName;
                         App.Settings.OverlayPosition = "右下";
                         overlay.RefreshPosition();
                         captures.Add(VisualCaptureService.Capture(overlay, Path.Combine(outputDirectory, "overlay-screen2-right-bottom-offset.png")));
@@ -154,12 +157,33 @@ internal static class VisualQaRunner
                 finally
                 {
                     App.Settings.MonitorIndex = previousMonitor;
+                    App.Settings.MonitorDeviceName = previousMonitorDeviceName;
                     App.Settings.OverlayPosition = previousPosition;
                     App.Settings.OverlayPalette = previousPalette;
                     App.Settings.OverlayOffsets["右下"] = previousRightBottomOffset;
                     overlay.RefreshStyle();
                 }
             }
+
+            await Task.Delay(1500);
+            var singleKeyRule = new DisplayRule { Enabled = true, ShowSingleKeys = true, Level = 1 };
+            App.Overlay?.Present("A", "视觉验收", singleKeyRule);
+            await Task.Delay(300);
+            if (App.Overlay is { IsVisible: true } singleOverlay)
+                captures.Add(VisualCaptureService.Capture(singleOverlay, Path.Combine(outputDirectory, "overlay-low-single-key.png")));
+
+            await Task.Delay(1500);
+            var detailedRule = new DisplayRule
+            {
+                Enabled = true,
+                Level = 3,
+                Description = "应用级说明",
+                KeyRules = [new KeyRule { Key = "Ctrl + C", Enabled = true, Description = "复制所选内容" }]
+            };
+            App.Overlay?.Present("Ctrl + C", "视觉验收", detailedRule);
+            await Task.Delay(300);
+            if (App.Overlay is { IsVisible: true } detailedOverlay)
+                captures.Add(VisualCaptureService.Capture(detailedOverlay, Path.Combine(outputDirectory, "overlay-high-key-description.png")));
 
             var status = new
             {

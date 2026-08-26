@@ -28,8 +28,10 @@ internal static class ModePolicy
             Level = source.Level,
             Priority = source.Priority,
             Description = source.Description,
-            HiddenKeys = [.. source.HiddenKeys],
-            KeyRules = [.. source.KeyRules.Select(item => item.Clone())]
+            InheritHiddenKeys = source.InheritHiddenKeys,
+            HiddenKeys = source.HiddenKeys,
+            KeyRules = source.KeyRules,
+            InheritedKeyRuleIndex = source.InheritedKeyRuleIndex
         };
 
         if (mode == Game)

@@ -6,24 +6,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace GlyphEcho;
-
-internal sealed class UpdateManifest
-{
-    [JsonPropertyName("product")] public string Product { get; init; } = string.Empty;
-    [JsonPropertyName("channel")] public string Channel { get; init; } = string.Empty;
-    [JsonPropertyName("version")] public string Version { get; init; } = string.Empty;
-    [JsonPropertyName("downloadUrl")] public string DownloadUrl { get; init; } = string.Empty;
-    [JsonPropertyName("size")] public long Size { get; init; }
-    [JsonPropertyName("sha256")] public string Sha256 { get; init; } = string.Empty;
-    [JsonPropertyName("signature")] public string Signature { get; init; } = string.Empty;
-    [JsonPropertyName("signatureV2")] public string SignatureV2 { get; init; } = string.Empty;
-    [JsonPropertyName("releaseNotes")] public string ReleaseNotes { get; init; } = string.Empty;
-    [JsonPropertyName("releaseNotesUrl")] public string ReleaseNotesUrl { get; init; } = string.Empty;
-}
 
 internal sealed record UpdateInfo(UpdateManifest Manifest, Version Version, Uri DownloadUri, string RawManifest)
 {
@@ -33,28 +17,16 @@ internal sealed record PreparedUpdate(string PackagePath, string ManifestPath, s
 
 internal static class UpdateService
 {
-    internal const long MaximumPackageSize = 512L * 1024 * 1024;
     private const long MaximumExpandedSize = 1024L * 1024 * 1024;
     private const int MaximumEntries = 10000;
-    private const int MaximumManifestSize = 64 * 1024;
+    private const int MaximumManifestSize = UpdateManifestValidator.MaximumManifestSize;
     private const string ManifestBase = "https://github.com/Kratosmax/GlyphEcho/releases/latest/download/";
-    private const string ReleasePathPrefix = "/Kratosmax/GlyphEcho/releases/download/";
     private static readonly SemaphoreSlim DownloadGate = new(1, 1);
     private static readonly HashSet<string> AllowedRedirectHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"
     };
-    internal const string PublicKeyPem = """
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxqcQFFVcy1q/hhK7Mxcc
-7Vt1mzAZv7ZVl6eLmI6Yy0SGAXkPUJtqLuu8xm9d83m/OisTUO8kKtqxpLXgnXru
-VAipKyX0b71dfEUWvO9gd5hYRcRqQmFTJ2SA/Ig7yjV44Dn1ieh38S1DuoB9vj5J
-A91FAtJeE61prCM+J44z4cx07p9IPnY5yfpdn4UnjOv3kwDZVCcpRALdtBWwwiMH
-FcSIUI732pEGJC/dKxeMiXbnVEaQpnuhhFDnle9ODEoI9OzcliUMa9aVRBrNUKYv
-r/TXvsiLTt4i71UeFbMEQTx3RFFqeB097qHOJbB+JwEdEYUzzfDqqSx7RgkYTzq5
-HQIDAQAB
------END PUBLIC KEY-----
-""";
+    internal const string PublicKeyPem = UpdateManifestValidator.PublicKeyPem;
 
     internal static Version CurrentVersion
     {
@@ -171,7 +143,8 @@ HQIDAQAB
     internal static void LaunchUpdater(PreparedUpdate prepared, string channel)
     {
         var start = new ProcessStartInfo(prepared.LauncherPath) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(prepared.LauncherPath)! };
-        foreach (var value in new[] { "--package", prepared.PackagePath, "--manifest", prepared.ManifestPath, "--target", AppContext.BaseDirectory, "--pid", Environment.ProcessId.ToString(), "--channel", channel }) start.ArgumentList.Add(value);
+        using var current = Process.GetCurrentProcess();
+        foreach (var value in new[] { "--package", prepared.PackagePath, "--manifest", prepared.ManifestPath, "--target", AppContext.BaseDirectory, "--pid", Environment.ProcessId.ToString(), "--process-start-ticks", current.StartTime.ToUniversalTime().Ticks.ToString(), "--channel", channel }) start.ArgumentList.Add(value);
         _ = Process.Start(start) ?? throw new InvalidOperationException("无法启动 GlyphEcho 更新器。");
     }
 
@@ -180,34 +153,12 @@ HQIDAQAB
 
     internal static UpdateInfo ParseAndVerify(string json, string expectedChannel, string publicKeyPem)
     {
-        if (Encoding.UTF8.GetByteCount(json) > MaximumManifestSize) throw new InvalidDataException("更新清单超过允许大小。");
-        var manifest = JsonSerializer.Deserialize<UpdateManifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = false, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow })
-            ?? throw new InvalidDataException("更新清单为空。");
-        Validate(manifest, expectedChannel);
-        using var rsa = RSA.Create();
-        rsa.ImportFromPem(publicKeyPem);
-        var signature = string.IsNullOrWhiteSpace(manifest.SignatureV2) ? manifest.Signature : manifest.SignatureV2;
-        var payload = string.IsNullOrWhiteSpace(manifest.SignatureV2) ? LegacyPayload(manifest) : V2Payload(manifest);
-        byte[] bytes;
-        try { bytes = Convert.FromBase64String(signature); }
-        catch (FormatException ex) { throw new InvalidDataException("更新清单签名格式无效。", ex); }
-        if (!rsa.VerifyData(Encoding.UTF8.GetBytes(payload), bytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new CryptographicException("更新清单签名验证失败。");
-        return new UpdateInfo(manifest, Version.Parse(manifest.Version), new Uri(manifest.DownloadUrl), json);
+        var verified = UpdateManifestValidator.ParseAndVerify(json, expectedChannel, publicKeyPem);
+        return new UpdateInfo(verified.Manifest, verified.Version, verified.DownloadUri, json);
     }
 
-    internal static string LegacyPayload(UpdateManifest manifest) => $"{manifest.Version}\n{manifest.DownloadUrl}\n{manifest.Sha256}";
-    internal static string V2Payload(UpdateManifest manifest) => string.Join('\n', manifest.Product, manifest.Channel, manifest.Version, manifest.DownloadUrl, manifest.Size, manifest.Sha256.ToLowerInvariant(), manifest.ReleaseNotes);
-
-    private static void Validate(UpdateManifest manifest, string expectedChannel)
-    {
-        if (manifest.Product != "GlyphEcho" || !manifest.Channel.Equals(expectedChannel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新清单产品或通道不匹配。");
-        if (!Version.TryParse(manifest.Version, out var version) || version.Build < 0 || version.Revision >= 0) throw new InvalidDataException("更新版本必须是三段数字版本。");
-        if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase) || !uri.AbsolutePath.StartsWith(ReleasePathPrefix, StringComparison.Ordinal)) throw new InvalidDataException("更新下载地址不在允许的 GitHub Release 范围内。");
-        if (manifest.Size <= 0 || manifest.Size > MaximumPackageSize) throw new InvalidDataException("更新包大小超出允许范围。");
-        if (manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("更新包 SHA-256 格式无效。");
-        if (string.IsNullOrWhiteSpace(manifest.SignatureV2) && string.IsNullOrWhiteSpace(manifest.Signature)) throw new InvalidDataException("更新清单缺少签名。");
-        if (Encoding.UTF8.GetByteCount(manifest.ReleaseNotes) > 16 * 1024) throw new InvalidDataException("更新说明超过允许大小。");
-    }
+    internal static string LegacyPayload(UpdateManifest manifest) => UpdateManifestValidator.LegacyPayload(manifest);
+    internal static string V2Payload(UpdateManifest manifest) => UpdateManifestValidator.V2Payload(manifest);
 
     private static HttpClient CreateClient(UpdateNetworkSettings settings)
     {
@@ -243,14 +194,7 @@ HQIDAQAB
         if (progress is not null && total != maximum) throw new InvalidDataException("下载内容大小与签名清单不一致。");
     }
 
-    private static void VerifyPackageFile(string path, UpdateManifest manifest)
-    {
-        var info = new FileInfo(path);
-        if (info.Length != manifest.Size) throw new InvalidDataException("更新包大小与签名清单不一致。");
-        using var stream = File.OpenRead(path);
-        var hash = Convert.ToHexString(SHA256.HashData(stream));
-        if (!hash.Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)) throw new CryptographicException("更新包哈希校验失败。");
-    }
+    private static void VerifyPackageFile(string path, UpdateManifest manifest) => UpdateManifestValidator.VerifyPackageFile(path, manifest);
 
     internal static void VerifyPackageStructure(string path, string expectedChannel)
     {

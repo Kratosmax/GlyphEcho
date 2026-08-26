@@ -14,33 +14,44 @@ internal sealed class GamepadHook : IDisposable
     private readonly StickDirection[] _leftStick = new StickDirection[4];
     private readonly StickDirection[] _rightStick = new StickDirection[4];
     private readonly long[,] _lastStickEvent = new long[4, 2];
+    private readonly long[] _nextDisconnectedPoll = new long[4];
     private bool _available = true;
+    private int _polling;
+    private int _disposed;
     public event EventHandler<KeyPressedEventArgs>? KeyPressed;
 
-    public GamepadHook() { _timer = new ThreadingTimer(Poll, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(50)); }
+    public GamepadHook() { _timer = new ThreadingTimer(Poll, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan); }
+    internal void BeginPolling() => _timer.Change(TimeSpan.Zero, TimeSpan.FromMilliseconds(50));
 
     private void Poll(object? state)
     {
-        if (!_available) return;
-        for (uint index = 0; index < 4; index++)
+        if (!_available || Volatile.Read(ref _disposed) != 0 || Interlocked.Exchange(ref _polling, 1) != 0) return;
+        try
         {
-            try
+            for (uint index = 0; index < 4; index++)
             {
-                var result = XInputGetState(index, out var current);
-                if (result != ErrorSuccess) { _previous[index] = 0; continue; }
-                var pressed = (uint)current.Gamepad.Buttons;
-                var old = _previous[index];
-                var rising = (ushort)(pressed & ~old);
-                foreach (var (mask, name) in ButtonNames) if ((rising & mask) != 0) Raise(index, name);
-                if (current.Gamepad.LeftTrigger >= 128 && (old & 0x10000) == 0) Raise(index, "LT");
-                if (current.Gamepad.RightTrigger >= 128 && (old & 0x20000) == 0) Raise(index, "RT");
-                UpdateStick(index, 0, current.Gamepad.ThumbLX, current.Gamepad.ThumbLY, _leftStick, "LS");
-                UpdateStick(index, 1, current.Gamepad.ThumbRX, current.Gamepad.ThumbRY, _rightStick, "RS");
-                _previous[index] = pressed | (current.Gamepad.LeftTrigger >= 128 ? 0x10000u : 0) | (current.Gamepad.RightTrigger >= 128 ? 0x20000u : 0);
+                try
+                {
+                    var now = Environment.TickCount64;
+                    if (now < _nextDisconnectedPoll[index]) continue;
+                    var result = XInputGetState(index, out var current);
+                    if (result != ErrorSuccess) { _previous[index] = 0; _nextDisconnectedPoll[index] = now + 1000; continue; }
+                    _nextDisconnectedPoll[index] = 0;
+                    var pressed = (uint)current.Gamepad.Buttons;
+                    var old = _previous[index];
+                    var rising = (ushort)(pressed & ~old);
+                    foreach (var (mask, name) in ButtonNames) if ((rising & mask) != 0) Raise(index, name);
+                    if (current.Gamepad.LeftTrigger >= 128 && (old & 0x10000) == 0) Raise(index, "LT");
+                    if (current.Gamepad.RightTrigger >= 128 && (old & 0x20000) == 0) Raise(index, "RT");
+                    UpdateStick(index, 0, current.Gamepad.ThumbLX, current.Gamepad.ThumbLY, _leftStick, "LS");
+                    UpdateStick(index, 1, current.Gamepad.ThumbRX, current.Gamepad.ThumbRY, _rightStick, "RS");
+                    _previous[index] = pressed | (current.Gamepad.LeftTrigger >= 128 ? 0x10000u : 0) | (current.Gamepad.RightTrigger >= 128 ? 0x20000u : 0);
+                }
+                catch (DllNotFoundException) { _available = false; return; }
+                catch (EntryPointNotFoundException) { _available = false; return; }
             }
-            catch (DllNotFoundException) { _available = false; return; }
-            catch (EntryPointNotFoundException) { _available = false; return; }
         }
+        finally { Volatile.Write(ref _polling, 0); }
     }
 
     private void UpdateStick(uint index, int stickIndex, short x, short y, StickDirection[] states, string name)
@@ -88,7 +99,7 @@ internal sealed class GamepadHook : IDisposable
         return true;
     }
 
-    private void Raise(uint index, string name) => KeyPressed?.Invoke(this, new KeyPressedEventArgs($"手柄 {index + 1} · {name}", $"手柄 {index + 1}", string.Empty, $"手柄 {index + 1} · {name}"));
+    private void Raise(uint index, string name) { if (Volatile.Read(ref _disposed) != 0) return; KeyPressed?.Invoke(this, new KeyPressedEventArgs($"手柄 {index + 1} · {name}", $"手柄 {index + 1}", string.Empty, $"手柄 {index + 1} · {name}")); }
     private static readonly (ushort Mask, string Name)[] ButtonNames = [(DPadUp, "上"), (DPadDown, "下"), (DPadLeft, "左"), (DPadRight, "右"), (Start, "Start"), (Back, "Back"), (LeftThumb, "LS"), (RightThumb, "RS"), (LeftShoulder, "LB"), (RightShoulder, "RB"), (A, "A"), (B, "B"), (X, "X"), (Y, "Y")];
     private static readonly Dictionary<StickDirection, string> DirectionNames = new()
     {
@@ -96,7 +107,7 @@ internal sealed class GamepadHook : IDisposable
         [StickDirection.DownRight] = "↘", [StickDirection.Down] = "↓", [StickDirection.DownLeft] = "↙",
         [StickDirection.Left] = "←", [StickDirection.UpLeft] = "↖"
     };
-    public void Dispose() => _timer.Dispose();
+    public void Dispose() { if (Interlocked.Exchange(ref _disposed, 1) != 0) return; _timer.Change(Timeout.Infinite, Timeout.Infinite); using var stopped = new ManualResetEvent(false); if (_timer.Dispose(stopped)) stopped.WaitOne(1000); }
 
     [DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
     private static extern uint XInputGetState(uint userIndex, out XInputState state);

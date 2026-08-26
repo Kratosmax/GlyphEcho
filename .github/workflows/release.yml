@@ -29,7 +29,9 @@ jobs:
         shell: pwsh
         run: |
           dotnet run --project .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "GlyphEcho smoke tests failed" }
           dotnet run --project .\GlyphEcho.Updater\GlyphEcho.Updater.csproj --configuration Release -- --self-test
+          if ($LASTEXITCODE -ne 0) { throw "GlyphEcho updater self-test failed" }
       - name: Build packages
         shell: pwsh
         run: .\scripts\Build-ReleaseAssets.ps1 -Version "${{ steps.version.outputs.version }}"

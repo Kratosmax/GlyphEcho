@@ -1,26 +1,16 @@
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using GlyphEcho;
 
-const long MaximumPackageSize = 512L * 1024 * 1024;
 const long MaximumExpandedSize = 1024L * 1024 * 1024;
 const int MaximumEntries = 10000;
-const string PublicKeyPem = """
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxqcQFFVcy1q/hhK7Mxcc
-7Vt1mzAZv7ZVl6eLmI6Yy0SGAXkPUJtqLuu8xm9d83m/OisTUO8kKtqxpLXgnXru
-VAipKyX0b71dfEUWvO9gd5hYRcRqQmFTJ2SA/Ig7yjV44Dn1ieh38S1DuoB9vj5J
-A91FAtJeE61prCM+J44z4cx07p9IPnY5yfpdn4UnjOv3kwDZVCcpRALdtBWwwiMH
-FcSIUI732pEGJC/dKxeMiXbnVEaQpnuhhFDnle9ODEoI9OzcliUMa9aVRBrNUKYv
-r/TXvsiLTt4i71UeFbMEQTx3RFFqeB097qHOJbB+JwEdEYUzzfDqqSx7RgkYTzq5
-HQIDAQAB
------END PUBLIC KEY-----
-""";
 
 if (args is ["--self-test"]) return RunSelfTest();
+
+string? recoveryTarget = null;
+int? originalProcessId = null;
+long? originalProcessStartTicks = null;
 
 try
 {
@@ -28,12 +18,21 @@ try
     var package = Path.GetFullPath(Required(options, "package"));
     var manifestPath = Path.GetFullPath(Required(options, "manifest"));
     var target = Path.GetFullPath(Required(options, "target")).TrimEnd(Path.DirectorySeparatorChar);
+    recoveryTarget = target;
     var channel = Required(options, "channel");
     if (!int.TryParse(Required(options, "pid"), out var pid)) return 2;
+    originalProcessId = pid;
+    var expectedStartTicks = long.TryParse(Required(options, "process-start-ticks"), out var ticks) ? ticks : throw new ArgumentException("原进程启动时间无效。");
+    originalProcessStartTicks = expectedStartTicks;
     ValidateInputs(package, manifestPath, target);
     var manifest = ReadAndVerifyManifest(manifestPath, channel);
     VerifyPackage(package, manifest);
-    try { using var process = Process.GetProcessById(pid); if (!process.WaitForExit(30000)) return 3; } catch (ArgumentException) { }
+    try
+    {
+        using var process = Process.GetProcessById(pid);
+        if (process.StartTime.ToUniversalTime().Ticks == expectedStartTicks && !process.WaitForExit(30000)) throw new TimeoutException("等待 GlyphEcho 退出超时。");
+    }
+    catch (ArgumentException) { }
 
     var transactionId = Guid.NewGuid().ToString("N");
     var (stage, backup) = TransactionPaths(target, transactionId);
@@ -47,7 +46,6 @@ try
         try
         {
             Directory.Move(stage, target);
-            Directory.Delete(backup, true);
         }
         catch
         {
@@ -55,14 +53,15 @@ try
             Directory.Move(backup, target);
             throw;
         }
+        try { Directory.Delete(backup, true); } catch { }
     }
     finally
     {
-        if (Directory.Exists(stage)) Directory.Delete(stage, true);
+        if (Directory.Exists(stage)) try { Directory.Delete(stage, true); } catch { }
     }
 
-    File.Delete(package);
-    File.Delete(manifestPath);
+    TryDelete(package);
+    TryDelete(manifestPath);
     var start = new ProcessStartInfo(Path.Combine(target, "GlyphEcho.exe")) { WorkingDirectory = target, UseShellExecute = true };
     start.ArgumentList.Add("--updated-from");
     start.ArgumentList.Add(manifest.Version);
@@ -78,8 +77,33 @@ catch (Exception ex)
         File.WriteAllText(Path.Combine(logRoot, "update-failed.log"), ex.ToString());
     }
     catch { }
+    TryRestart(recoveryTarget, originalProcessId, originalProcessStartTicks);
     return 4;
 }
+static void TryRestart(string? target, int? originalProcessId, long? originalProcessStartTicks)
+{
+    if (string.IsNullOrWhiteSpace(target)) return;
+    if (originalProcessId is { } pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (originalProcessStartTicks == process.StartTime.ToUniversalTime().Ticks && !process.WaitForExit(30000)) return;
+        }
+        catch (ArgumentException) { }
+    }
+    var executable = Path.Combine(target, "GlyphEcho.exe");
+    if (!File.Exists(executable)) return;
+    try
+    {
+        var start = new ProcessStartInfo(executable) { WorkingDirectory = target, UseShellExecute = true };
+        start.ArgumentList.Add("--update-failed");
+        _ = Process.Start(start);
+    }
+    catch { }
+}
+
+static void TryDelete(string path) { try { File.Delete(path); } catch { } }
 
 static (string Stage, string Backup) TransactionPaths(string target, string transactionId)
 {
@@ -113,34 +137,13 @@ static void ValidateInputs(string package, string manifest, string target)
     if (!package.StartsWith(updateRoot, StringComparison.OrdinalIgnoreCase) || !manifest.StartsWith(updateRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新文件不在 GlyphEcho 受控缓存目录中。");
 }
 
-static Manifest ReadAndVerifyManifest(string path, string expectedChannel)
+static UpdateManifest ReadAndVerifyManifest(string path, string expectedChannel)
 {
     var json = File.ReadAllText(path, Encoding.UTF8);
-    if (Encoding.UTF8.GetByteCount(json) > 64 * 1024) throw new InvalidDataException("更新清单超过允许大小。");
-    var manifest = JsonSerializer.Deserialize<Manifest>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = false, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow }) ?? throw new InvalidDataException("更新清单为空。");
-    if (manifest.Product != "GlyphEcho" || !manifest.Channel.Equals(expectedChannel, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("更新清单产品或通道不匹配。");
-    if (!Version.TryParse(manifest.Version, out var version) || version.Build < 0 || version.Revision >= 0) throw new InvalidDataException("更新版本必须是三段数字版本。");
-    if (manifest.Size <= 0 || manifest.Size > MaximumPackageSize || manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException("更新包大小或哈希格式无效。");
-    if (!Uri.TryCreate(manifest.DownloadUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "github.com" || !uri.AbsolutePath.StartsWith("/Kratosmax/GlyphEcho/releases/download/", StringComparison.Ordinal)) throw new InvalidDataException("更新下载地址不受信任。");
-    var signatureText = string.IsNullOrWhiteSpace(manifest.SignatureV2) ? manifest.Signature : manifest.SignatureV2;
-    var payload = string.IsNullOrWhiteSpace(manifest.SignatureV2)
-        ? $"{manifest.Version}\n{manifest.DownloadUrl}\n{manifest.Sha256}"
-        : string.Join('\n', manifest.Product, manifest.Channel, manifest.Version, manifest.DownloadUrl, manifest.Size, manifest.Sha256.ToLowerInvariant(), manifest.ReleaseNotes);
-    byte[] signature;
-    try { signature = Convert.FromBase64String(signatureText); } catch (FormatException ex) { throw new InvalidDataException("更新清单签名格式无效。", ex); }
-    using var rsa = RSA.Create();
-    rsa.ImportFromPem(PublicKeyPem);
-    if (!rsa.VerifyData(Encoding.UTF8.GetBytes(payload), signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new CryptographicException("更新清单签名验证失败。");
-    return manifest;
+    return UpdateManifestValidator.ParseAndVerify(json, expectedChannel).Manifest;
 }
 
-static void VerifyPackage(string path, Manifest manifest)
-{
-    var info = new FileInfo(path);
-    if (info.Length != manifest.Size) throw new InvalidDataException("更新包大小不匹配。");
-    using var stream = File.OpenRead(path);
-    if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(manifest.Sha256, StringComparison.OrdinalIgnoreCase)) throw new CryptographicException("更新包哈希不匹配。");
-}
+static void VerifyPackage(string path, UpdateManifest manifest) => UpdateManifestValidator.VerifyPackageFile(path, manifest);
 
 static void ExtractValidated(string package, string stage)
 {
@@ -236,18 +239,4 @@ static int RunSelfTest()
     {
         if (Directory.Exists(root)) Directory.Delete(root, true);
     }
-}
-
-internal sealed class Manifest
-{
-    [JsonPropertyName("product")] public string Product { get; init; } = string.Empty;
-    [JsonPropertyName("channel")] public string Channel { get; init; } = string.Empty;
-    [JsonPropertyName("version")] public string Version { get; init; } = string.Empty;
-    [JsonPropertyName("downloadUrl")] public string DownloadUrl { get; init; } = string.Empty;
-    [JsonPropertyName("size")] public long Size { get; init; }
-    [JsonPropertyName("sha256")] public string Sha256 { get; init; } = string.Empty;
-    [JsonPropertyName("signature")] public string Signature { get; init; } = string.Empty;
-    [JsonPropertyName("signatureV2")] public string SignatureV2 { get; init; } = string.Empty;
-    [JsonPropertyName("releaseNotes")] public string ReleaseNotes { get; init; } = string.Empty;
-    [JsonPropertyName("releaseNotesUrl")] public string ReleaseNotesUrl { get; init; } = string.Empty;
 }

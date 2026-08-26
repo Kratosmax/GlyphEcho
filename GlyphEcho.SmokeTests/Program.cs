@@ -9,6 +9,9 @@ var tests = new (string Name, Action Run)[]
     ("提示队列合并与过期前移", TestOverlayQueue),
     ("提示色板与配置兼容", TestOverlayPalettes),
     ("模式覆盖规则", TestModePolicy),
+    ("键盘单键与文本输入规范化", TestKeyboardFormatting),
+    ("应用规则合并与按键说明", TestRuleResolution),
+    ("配置空值迁移与保存失败信号", TestSettingsRecovery),
     ("提示位置微调与持久化", TestOverlayOffsets),
     ("按键目录查重与批量删除", TestCatalogIndex),
     ("开机自启命令引用", TestStartupCommand),
@@ -63,12 +66,18 @@ static void TestOverlayQueue()
     var mediumQueue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
     mediumQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "来源 A", "", 2), start);
     mediumQueue.Add(new OverlayPresentation("Ctrl + C", "AppB", "来源 B", "", 2), start.AddMilliseconds(50));
-    Equal(2, mediumQueue.Snapshot(start.AddMilliseconds(50)).Count);
+    var mediumItems = mediumQueue.Snapshot(start.AddMilliseconds(50));
+    Equal(1, mediumItems.Count);
+    Equal(2, mediumItems[0].Count);
+    Equal("来源 B", mediumItems[0].Presentation.Source);
 
     var highQueue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
     highQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "同一来源", "复制", 3), start);
     highQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "同一来源", "其他功能", 3), start.AddMilliseconds(50));
-    Equal(2, highQueue.Snapshot(start.AddMilliseconds(50)).Count);
+    var highItems = highQueue.Snapshot(start.AddMilliseconds(50));
+    Equal(1, highItems.Count);
+    Equal(2, highItems[0].Count);
+    Equal("其他功能", highItems[0].Presentation.Action);
 }
 
 static void TestOverlayPalettes()
@@ -126,6 +135,71 @@ static void TestOverlayOffsets()
     Equal(0, restored.GetOverlayOffset("右上").X);
 }
 
+static void TestKeyboardFormatting()
+{
+    Equal("A", KeyboardHook.Format(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.None, true, false));
+    Equal(string.Empty, KeyboardHook.BuildCatalogKey(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.None));
+    Equal("1", KeyboardHook.Format(System.Windows.Input.Key.D1, System.Windows.Input.ModifierKeys.Shift, true, false));
+    Equal(string.Empty, KeyboardHook.BuildCatalogKey(System.Windows.Input.Key.D1, System.Windows.Input.ModifierKeys.Shift));
+    Equal(string.Empty, KeyboardHook.Format(System.Windows.Input.Key.LeftAlt, System.Windows.Input.ModifierKeys.Alt, true, true, ModifierSideState.LeftAlt));
+    Equal("LeftAlt + C", KeyboardHook.Format(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Alt, false, true, ModifierSideState.LeftAlt));
+    Equal("Alt + C", KeyboardHook.NormalizeForRule("LeftAlt + C"));
+}
+
+static void TestRuleResolution()
+{
+    var settings = KeySettings.Default;
+    settings.DefaultRule.ShowSingleKeys = false;
+    settings.GlobalKeyCatalog =
+    [
+        new KeyRule { Key = "Ctrl + C", Enabled = true, Description = "复制" },
+        new KeyRule { Key = "Ctrl + V", Enabled = true, Description = "粘贴" }
+    ];
+    settings.Rules.Add(new DisplayRule
+    {
+        Name = "Target", ProcessPath = @"C:\Target\app.exe", Enabled = true, ShowSingleKeys = true,
+        UseGlobalCatalog = true, KeyRules = [new KeyRule { Key = "Ctrl + C", Enabled = true, Description = "", HasDescriptionOverride = true }]
+    });
+    settings.NormalizeCatalog();
+    SetAppSettings(settings);
+    var resolved = App.ResolveRule(@"C:\Target\app.exe");
+    Equal(true, resolved.ShowSingleKeys);
+    Equal(1, resolved.KeyRules.Count);
+    True(ReferenceEquals(settings.CatalogRuleIndex, resolved.InheritedKeyRuleIndex));
+    Equal(string.Empty, resolved.FindKeyRule("Ctrl + C")!.Description);
+    Equal("粘贴", resolved.FindKeyRule("Ctrl + V")!.Description);
+
+    var defaultResolved = App.ResolveRule(@"C:\Other\app.exe");
+    Equal(0, defaultResolved.KeyRules.Count);
+    True(ReferenceEquals(settings.CatalogRuleIndex, defaultResolved.InheritedKeyRuleIndex));
+    Equal("复制", defaultResolved.FindKeyRule("Ctrl + C")!.Description);
+}
+
+static void TestSettingsRecovery()
+{
+    var settings = JsonSerializer.Deserialize<KeySettings>("""{"DefaultRule":null,"GlobalKeyCatalog":null,"Rules":null,"IgnoredKeys":null,"OverlayOffsets":null,"UpdateNetwork":null}""")!;
+    settings.NormalizeCatalog();
+    True(settings.DefaultRule is not null);
+    Equal(0, settings.GlobalKeyCatalog.Count);
+    Equal(0, settings.Rules.Count);
+    True(settings.OverlayOffsets.Count >= 4);
+
+    var root = Path.Combine(Path.GetTempPath(), "GlyphEcho-save-test-" + Guid.NewGuid().ToString("N"));
+    File.WriteAllText(root, "not a directory");
+    var previous = Environment.GetEnvironmentVariable("KEYOVERLAY_DATA_DIR");
+    try
+    {
+        Environment.SetEnvironmentVariable("KEYOVERLAY_DATA_DIR", root);
+        SetAppSettings(settings);
+        Equal(false, App.SaveSettings());
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("KEYOVERLAY_DATA_DIR", previous);
+        File.Delete(root);
+    }
+}
+
 static void TestCatalogIndex()
 {
     var settings = new KeySettings
@@ -141,7 +215,7 @@ static void TestCatalogIndex()
     Equal(1, settings.DeleteCatalogKeys([settings.GlobalKeyCatalog[0]]));
     Equal(false, settings.TryAddObservedKey("Ctrl+C"));
     Equal(1, settings.GlobalKeyCatalog.Count);
-    Equal(1, settings.DefaultRule.KeyRules.Count);
+    Equal(0, settings.DefaultRule.KeyRules.Count);
 }
 
 static void TestStartupCommand()
@@ -278,4 +352,10 @@ static void Throws<T>(Action action) where T : Exception
     try { action(); }
     catch (T) { return; }
     throw new InvalidOperationException($"预期抛出 {typeof(T).Name}");
+}
+
+static void SetAppSettings(KeySettings settings)
+{
+    typeof(App).GetField("<Settings>k__BackingField", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.SetValue(null, settings);
+    typeof(App).GetField("ResolvedRules", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!.GetType().GetMethod("Clear")!.Invoke(typeof(App).GetField("ResolvedRules", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null), null);
 }

@@ -13,6 +13,7 @@ public sealed record UpdateNetworkSettings(List<GithubProxySetting>? GithubProxi
         var hasDirect = false;
         foreach (var route in GithubProxies ?? [])
         {
+            if (route is null) continue;
             if (route.IsDirect)
             {
                 if (!hasDirect)

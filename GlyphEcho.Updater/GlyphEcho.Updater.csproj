@@ -10,4 +10,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\UpdateManifestValidator.cs" Link="UpdateManifestValidator.cs" />
+  </ItemGroup>
 </Project>

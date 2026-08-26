@@ -7,6 +7,27 @@ $assetRoot = Join-Path $Root "Assets"
 New-Item -ItemType Directory -Force $assetRoot | Out-Null
 $pngPath = Join-Path $assetRoot "GlyphEcho.png"
 $icoPath = Join-Path $assetRoot "GlyphEcho.ico"
+$generationRoot = Join-Path $Root "temp\icon-generation"
+$generatedPngPath = Join-Path $generationRoot "GlyphEcho.png"
+New-Item -ItemType Directory -Force $generationRoot | Out-Null
+
+function Test-BitmapPixelsEqual([string]$LeftPath, [string]$RightPath) {
+    if (!(Test-Path -LiteralPath $LeftPath) -or !(Test-Path -LiteralPath $RightPath)) { return $false }
+    $left = [Drawing.Bitmap]::new($LeftPath)
+    $right = [Drawing.Bitmap]::new($RightPath)
+    try {
+        if ($left.Width -ne $right.Width -or $left.Height -ne $right.Height) { return $false }
+        for ($y = 0; $y -lt $left.Height; $y++) {
+            for ($x = 0; $x -lt $left.Width; $x++) {
+                if ($left.GetPixel($x, $y).ToArgb() -ne $right.GetPixel($x, $y).ToArgb()) { return $false }
+            }
+        }
+        return $true
+    } finally {
+        $left.Dispose()
+        $right.Dispose()
+    }
+}
 
 $bitmap = [Drawing.Bitmap]::new(256, 256, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $graphics = [Drawing.Graphics]::FromImage($bitmap)
@@ -57,11 +78,16 @@ try {
         )
         $graphics.FillPolygon($sparkleBrush, $sparkle)
     } finally { $sparkleBrush.Dispose() }
-    $bitmap.Save($pngPath, [Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save($generatedPngPath, [Drawing.Imaging.ImageFormat]::Png)
 } finally {
     $graphics.Dispose()
     $bitmap.Dispose()
 }
+
+if (!(Test-BitmapPixelsEqual $pngPath $generatedPngPath)) {
+    Copy-Item -LiteralPath $generatedPngPath -Destination $pngPath -Force
+}
+Remove-Item -LiteralPath $generatedPngPath -Force
 
 $source = [Drawing.Image]::FromFile($pngPath)
 $entries = [Collections.Generic.List[object]]::new()

@@ -10,23 +10,72 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前版本为 `0.5.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前版本为 `0.5.1`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`232d6ea`（0.5.0 标签提交）
-- 当前状态：0.5.0 已发布并完成线上资产、双签名和上一正式版升级链核验
+- 提交基线：`5a0597b`（0.5.0 发布记录提交）
+- 当前状态：0.5.1 发布候选已完成实现，正在执行正式构建与发布核验
 - 远程状态：`main`、`0.5.0` 标签和 Release 已推送；Actions `32927973532` 成功，GitHub `latest` 已指向 0.5.0
-- 当前工作：0.5.0 的六种提示色板、重复提示合并和更新器跨卷修复已交付
-- 当前正式版本为 `0.5.0`；版本、标签、Release 正文、八项资产和更新清单一致
+- 当前工作：配置、输入热路径、共享规则索引、更新检查互斥与诊断、搜索防抖、更新恢复和发布失败检测已完成本地验证
+- 当前正式版本仍为 `0.5.0`；0.5.1 尚未提交、打标签或发布
 
 ## 当前待办
 
-- 当前没有已授权但未完成的开发或发布任务，等待用户后续需求
+- 本轮开发已完成；用户未授权提交、推送或发布，等待确认后再进入版本流程
 - 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 0.5.0 Release Notes 已加入过渡说明，不得覆盖既有历史资产
 
 ## 本轮实现
+
+### 0.5.0 发布后可靠性与性能修复（未提交）
+
+- 全局按键目录只保留一份规范化字典；默认规则直接引用共享索引，旧配置中的 `DefaultRule.KeyRules` 仅迁移一次后清空
+- 应用规则运行时只缓存稀疏覆盖，不再为每个应用复制完整目录；规则编辑器也只保留一份可编辑副本
+- 10,000 项目录的应用规则首次解析从约 18.5ms、4.13MiB 降至约 0.72ms、4KiB；随后缓存命中 26.2ns/次、0 B/次
+- 页面、托盘和后台更新检查统一经过主窗口运行状态，同一时间只允许一个检查；后台异常写入 `%LocalAppData%\GlyphEcho\logs\update-check-failed.log`
+- 按键目录搜索使用 500ms `DispatcherTimer` 防抖，输入期间不再反复筛选和排序完整目录
+- 图标生成先写入项目 `temp/icon-generation`，像素一致时不覆盖源 PNG；连续两次生成前后 SHA-256 均为 `01F42BC115963B8571359D60260E576B3069865C00B247E1D3D1CEF7A0FAD824`
+- 配置保存、键盘钩子、手柄退避、提示重绘、更新器恢复、共享清单验证、CI 与正式打包失败检测等前序修复仍包含在当前未提交工作区
+
+当前未提交文件：
+
+```text
+.github/workflows/release.yml
+App.xaml.cs
+Assets/GlyphEcho.png
+CODEX_PROGRESS.md
+GamepadHook.cs
+GlyphEcho.csproj
+GlyphEcho.SmokeTests/Program.cs
+GlyphEcho.Updater/GlyphEcho.Updater.csproj
+GlyphEcho.Updater/UpdaterProgram.cs
+KeyboardHook.cs
+MainWindow.xaml.cs
+ModePolicy.cs
+OverlayQueue.cs
+OverlayWindow.Queue.cs
+RuleCatalog.cs
+RuleEditorWindow.xaml.cs
+UpdateManifestValidator.cs
+UpdateNetworkSettings.cs
+UpdateService.cs
+VisualQaRunner.cs
+installer/GlyphEcho.iss
+scripts/Build-ReleaseAssets.ps1
+scripts/Generate-AppIcon.ps1
+```
+
+本轮验证：
+
+- 主程序、SmokeTests 和更新器 Release 构建：0 警告、0 错误
+- SmokeTests 14/14 通过；更新器 self-test 2/2 通过
+- 真实 WPF `--capture-ui` 验收：`temp/review-ui-performance-fixes/ui-capture-status.json` 为 `success=true`，19 张截图、双屏坐标和提示尺寸检查通过
+- 0.5.1 正式候选四包已生成：Full Setup 73,468,538 字节、Full ZIP 102,757,697 字节、Lite Setup 2,608,021 字节、Lite ZIP 311,866 字节
+- 0.5.1 候选 SHA-256：Full Setup `F3998358EF69FF22733F8BEFC2021B5824F85E47E87636DA4255320273C7900F`、Full ZIP `E02E6923C67D7B79DC80314905BB9640362ECCD18681438251FE05635178CA24`、Lite Setup `C6BE59EFB7450B1BC679791B3CE44EBC9B9D9BC3F0A47F9F497FFF032E633B35`、Lite ZIP `5622B8CE9D172A1B83787A2FAA8E76705158B3F3BC4A12337ED03A61D5AECC2A`
+- Lite/Full ZIP 分别为 7/466 项，通道标记与包型一致，主程序和更新器 ProductVersion 均为 0.5.1
+- `git diff --check` 通过；仅有仓库现有 LF/CRLF 策略提示
+- Codex 图片查看器仍被 Windows ACL 辅助器故障阻断，本轮未能再次人工放大截图；自动像素、尺寸和位置验收已通过
 
 - 新增深色薄荷绿、天空蓝、琥珀黄和浅色深青、钴蓝、玫红六种提示色板，设置页使用 `×1 / ×2 / ×3` 预览并即时保存
 - 提示队列按当前级别实际可见内容合并：低级按按键，中级增加来源，高级再增加功能；不再让不可见的前台应用采样变化生成重复行
