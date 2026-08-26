@@ -10,19 +10,26 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.3.1`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.4.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`0ee7d98d256e3d196bd877fef7b6ec957c49eb3c`
-- 当前状态：0.3.1 兼容清单修复版已发布；0.3.0 保留为缺少 `update.json` 的审计记录
+- 提交基线：`4b414e9987001d6f5791fed5ad58633db3af6ae9`
+- 当前状态：0.4.0 发布候选正在本地验证；0.3.1 仍是当前线上正式版
 - 远程状态：`main`、`0.3.1` 标签和 Release 已推送；Actions `32871254644` 成功，GitHub `latest` 已指向 0.3.1
-- 当前工作：手柄、提示队列、双屏定位与位置微调、PinNote 风格 UI/毛玻璃、网络更新、模式即时切换、导航对齐、统一 Logo 和预览图标缓存规避已完成并发布
-- 当前正式版本为 `0.3.1`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+- 当前工作：Win10 图标兼容、按键目录批量删除、查重性能优化和当前用户开机自启已纳入 0.4.0 发布候选
+- 当前候选版本为 `0.4.0`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
 
 ## 本轮实现
 
+- 主窗口、规则编辑器和更新窗的图标字体统一为 Win10 自带的 `Segoe MDL2 Assets`，移除 `Segoe Fluent Icons` 依赖
+- 按键目录支持 Ctrl/Shift 多选、全选当前搜索结果、已选计数和带确认的批量删除；选中态横向拉满，单项删除统一居右
+- 目录启用开关现在立即同步默认规则并保存，不再依赖其他设置触发持久化
+- 按键目录用规范化 `HashSet` 做 O(1) 已存在/已忽略检查；只有新增按键才刷新列表和写配置
+- 规则规范化统一加号两侧空格，使 `Ctrl+C`、`Ctrl + C` 以及 Left/Right 修饰键规则正确复用
+- 新增默认开启的当前用户开机自启；注册表命令使用绝对 EXE 路径和 `--background`，路径移动后自动修复，关闭时删除，卸载器清理残留值
+- `--background` 启动只创建托盘与监听，不主动显示主窗口；视觉验收模式明确跳过真实注册表
 - 删除无描述符依据的 Raw HID M1-M4 位猜测，避免右摇杆误报 M 和循环触发
 - XInput 支持左右摇杆八方向、进入/退出双阈值死区和 200ms 方向事件间隔
 - F13-F16 显示为 M1-M4，作为飞智空间站可验证的背键映射方案
@@ -46,6 +53,10 @@ Get-Content .\GlyphEcho.csproj
 
 ## 修改文件
 
+- Win10 图标与目录 UI：`App.xaml`、`MainWindow.xaml`、`RuleEditorWindow.xaml`、`UpdateWindow.xaml`
+- 目录逻辑与规范化：`App.xaml.cs`、`MainWindow.xaml.cs`、`KeyboardHook.cs`
+- 回归与视觉验收：`GlyphEcho.SmokeTests/Program.cs`、`VisualQaRunner.cs`
+- 开机自启与安装器：`StartupRegistration.cs`、`installer/GlyphEcho.iss`
 - UI 与生命周期：`App.xaml`、`App.xaml.cs`、`MainWindow.xaml`、`MainWindow.xaml.cs`、`ModePolicy.cs`、`RuleEditorWindow.xaml`、`RuleEditorWindow.xaml.cs`、`AppDialog.xaml`、`AppDialog.xaml.cs`
 - 提示与输入：`GamepadHook.cs`、`KeyboardHook.cs`、`OverlayQueue.cs`、`OverlayWindow.xaml`、`OverlayWindow.Queue.cs`；删除 `HidGamepadHook.cs` 和旧 `OverlayWindow.xaml.cs`
 - 原生与视觉验收：`NativeMethods.cs`、`VisualCaptureService.cs`、`VisualQaRunner.cs`
@@ -56,6 +67,21 @@ Get-Content .\GlyphEcho.csproj
 - 文档：`README.md`、`CODEX_PROGRESS.md`
 
 ## 本轮验证
+
+```powershell
+dotnet build .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --disable-build-servers
+dotnet run --project .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --no-build
+dotnet run --project .\GlyphEcho.Updater\GlyphEcho.Updater.csproj --configuration Release --no-restore -- --self-test
+$env:KEYOVERLAY_DATA_DIR = ".\temp\visual-qa-data-catalog-batch-final"
+.\bin\Release\net8.0-windows\GlyphEcho.exe --capture-ui ".\temp\ui-captures-catalog-batch-final"
+```
+
+- Windows 10 22H2（构建 19045）真实截图通过：侧栏与删除图标正常显示，3 项多选高亮、计数和删除居右布局正确，自启开关默认勾选且布局无重叠
+- `temp/ui-captures-startup-final/ui-capture-status.json` 为 success，共 15 张 `PrintWindow` 截图
+- 10 项 Smoke Tests 全通过，覆盖按键目录查重/批量删除、自启命令引用和后台参数；更新器路径穿越保护通过
+- 本机 Inno Setup 6.7.3 已成功编译 Full/Lite 安装器；两个 Setup 的 Windows 文件版本均为 `0.4.0.0`
+- 0.4.0 本地预览包（非正式 Release）：`temp/preview/GlyphEcho-0.4.0-Lite-local-23028564.zip`，296,968 字节，SHA-256 `DD0DDFAA2ED7E68F2057AB73A7274209BDF3486DF447B3FC580C2977A3544FFF`
+- 0.4.0 预览 EXE 验收：`temp/preview-ui-captures-040/ui-capture-status.json` 为 success，共 15 张截图
 
 ```powershell
 dotnet build .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --disable-build-servers
@@ -84,13 +110,15 @@ git status --short --branch
 - 0.3.1 本地发布 ZIP 展开验证：Lite 285,290 字节、SHA-256 `458963A064ED7ADECE095E22E9DC4F9C699A9A298413CABB23FDC0AAFA36F106`、7 项；Full 99,550,821 字节、SHA-256 `1926D1C58DA4B6556CA6CCA2E24F598953E21E94201977B3BD160EA60453FDDA`、466 项；通道标记分别为 `lite`/`full`，两个 EXE 文件版本均为 `0.3.1.0`
 - 0.3.1 云端流水线 `32871254644` 在 2 分 22 秒内成功；Release 为非草稿、非预发布，包含四个正式包、`SHA256SUMS.txt`、`update.json`、`update-lite.json`、`update-full.json` 共八项资产，兼容清单与 Lite 清单的 GitHub SHA-256 digest 和大小一致
 - 简单发布检查确认 GitHub `releases/latest` 返回 `0.3.1`；按用户指示停止大文件下载和客户端公钥深度验签
+- 0.4.0 本地发布候选四包均已生成：Full Setup 73,454,156 字节、Lite Setup 2,597,139 字节、Full ZIP 102,743,180 字节、Lite ZIP 296,968 字节；两个 ZIP 分别含 466/7 项，通道为 `full`/`lite`，主程序和更新器文件版本均为 `0.4.0.0`
+- 0.4.0 候选包 SHA-256：Full Setup `806C7F8F2C0BBFDC7E97D91B01AE00A447CDA383C91F8A416C9F4DDCFCADD6D5`、Lite Setup `D40C62C0FACBDEE592EDBBADA8F19720AAA8D44B03EE8128C4151E637711DA9C`、Full ZIP `67A383DCDA6890BFEEAD614A7FEEB42FDECDC3451A3971D5F4532842610D51F7`、Lite ZIP `EB92FEF6F6A3A0E243BED16111D7E49D79163C22E9F39D1A5AE1A495ECE5CFCF`
 
 ## 尚未验证
 
 - 未在本轮自动测试窗口内人工推动左右摇杆、按真实 M1-M4；XInput 连接和静止状态已确认
 - 飞智黑武士 4 Pro 当前只暴露标准 XInput 字段；原生 M1-M4 仍无可验证协议。需在飞智空间站将背键映射为 F13-F16 后实测
 - 未使用上一正式 Release 原始客户端执行完整升级，也未完成线上大文件重算和客户端内置公钥验签；用户明确要求停止深度验证，只保留简单 Release/latest/资产矩阵检查
-- 本机未安装 Inno Setup，未本地编译安装器；0.3.1 GitHub Actions 已成功构建并上传 Full/Lite Setup
+- 0.4.0 尚未完成上一正式 Release 原始客户端到线上候选包的完整升级链；发布后必须使用真实线上清单和资产补做
 
 ## 关键入口
 
@@ -110,7 +138,7 @@ git status --short --branch
 - 所有网络线路执行同一套签名、哈希、通道和包结构校验
 - 保留 Per-Monitor-V2 和目标显示器物理像素定位，不能重新用当前窗口的 WPF 变换换算另一块屏幕
 - 不提交密钥、令牌、代理凭据、用户配置、`bin/obj/temp`、日志和本地截图
-- 用户已授权本次发布及因在线门禁失败产生的 0.3.1 修复提交、推送、标签和 Release；不覆盖 0.3.0 资产，该授权不自动延续到后续无关版本
+- 用户已明确授权提交、推送、创建 `0.4.0` 标签和 Release；不得覆盖既有 0.3.x 资产，该授权不自动延续到后续无关版本
 
 ## 维护规则
 

@@ -9,6 +9,9 @@ var tests = new (string Name, Action Run)[]
     ("提示队列合并与过期前移", TestOverlayQueue),
     ("模式覆盖规则", TestModePolicy),
     ("提示位置微调与持久化", TestOverlayOffsets),
+    ("按键目录查重与批量删除", TestCatalogIndex),
+    ("开机自启命令引用", TestStartupCommand),
+    ("后台启动参数", TestBackgroundStartup),
     ("更新线路规范化与排序", TestNetworkRoutes),
     ("Legacy/V2 清单签名", TestManifestSignatures),
     ("更新包结构与通道", TestPackageStructure)
@@ -84,6 +87,38 @@ static void TestOverlayOffsets()
     Equal(-10, restored.GetOverlayOffset("右下").X);
     Equal(6, restored.GetOverlayOffset("右下").Y);
     Equal(0, restored.GetOverlayOffset("右上").X);
+}
+
+static void TestCatalogIndex()
+{
+    var settings = new KeySettings
+    {
+        GlobalKeyCatalog = [new KeyRule { Key = "Ctrl + C", Enabled = true }],
+        IgnoredKeys = ["Alt + F4"]
+    };
+    settings.NormalizeCatalog();
+    Equal(false, settings.TryAddObservedKey("Ctrl+C"));
+    Equal(false, settings.TryAddObservedKey("LeftAlt + F4"));
+    Equal(true, settings.TryAddObservedKey("Ctrl + V"));
+    Equal(2, settings.GlobalKeyCatalog.Count);
+    Equal(1, settings.DeleteCatalogKeys([settings.GlobalKeyCatalog[0]]));
+    Equal(false, settings.TryAddObservedKey("Ctrl+C"));
+    Equal(1, settings.GlobalKeyCatalog.Count);
+    Equal(1, settings.DefaultRule.KeyRules.Count);
+}
+
+static void TestStartupCommand()
+{
+    var path = Path.Combine("C:\\", "Program Files", "GlyphEcho", "GlyphEcho.exe");
+    Equal("\"C:\\Program Files\\GlyphEcho\\GlyphEcho.exe\" --background", StartupRegistration.BuildCommand(path));
+}
+
+static void TestBackgroundStartup()
+{
+    Equal(true, App.ShouldStartInBackground(["--background"], false));
+    Equal(true, App.ShouldStartInBackground(["--BACKGROUND"], false));
+    Equal(false, App.ShouldStartInBackground([], false));
+    Equal(false, App.ShouldStartInBackground(["--background"], true));
 }
 
 static void TestNetworkRoutes()

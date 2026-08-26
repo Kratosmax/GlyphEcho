@@ -13,6 +13,9 @@ AppId={{B65E5A8E-0D99-4A17-8E77-GLYPHECHO020}
 AppName={#MyAppName}
 AppVersion={#APP_VERSION}
 AppPublisher={#MyAppPublisher}
+VersionInfoVersion={#APP_VERSION}.0
+VersionInfoProductVersion={#APP_VERSION}
+VersionInfoProductName={#MyAppName}
 DefaultDirName={autopf}\GlyphEcho
 DefaultGroupName=GlyphEcho
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -37,3 +40,10 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 GlyphEcho"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', 'GlyphEcho');
+end;

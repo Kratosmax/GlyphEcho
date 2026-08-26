@@ -18,6 +18,11 @@ internal static class VisualQaRunner
             var backdrop = main.ApplyMaterialForVisualQa(true);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-overview-acrylic.png")));
 
+            main.ShowStartupSettingForVisualQa();
+            await Task.Delay(100);
+            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-startup-setting.png")));
+            main.ShowDefaultTopForVisualQa();
+
             main.SetGameLevelForVisualQa(1);
             main.SetModeForVisualQa(ModePolicy.Game);
             await Task.Delay(100);
@@ -36,6 +41,18 @@ internal static class VisualQaRunner
             main.NavigateForVisualQa("Network");
             await Task.Delay(150);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-network.png")));
+
+            App.Settings.GlobalKeyCatalog =
+            [
+                new KeyRule { Key = "Ctrl + Shift + Space", Enabled = true, CreatedAt = DateTimeOffset.UtcNow },
+                new KeyRule { Key = "Ctrl + C", Enabled = true, CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-1) },
+                new KeyRule { Key = "Alt + Tab", Enabled = false, CreatedAt = DateTimeOffset.UtcNow.AddSeconds(-2) }
+            ];
+            App.Settings.NormalizeCatalog();
+            main.NavigateForVisualQa("Keys");
+            main.SelectAllCatalogForVisualQa();
+            await Task.Delay(150);
+            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-catalog-multi-select.png")));
 
             main.Width = main.MinWidth;
             main.Height = main.MinHeight;

@@ -20,7 +20,7 @@
                     <TextBlock Text="按进程完整路径匹配；应用规则可以继承通用按键目录" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0"/>
                 </StackPanel>
                 <Border Grid.Column="1" Width="42" Height="42" Background="#18147D76" CornerRadius="6">
-                    <TextBlock Text="&#xE8D4;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <TextBlock Text="&#xE8D4;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PrimaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
             </Grid>
             <Grid Grid.Row="1" Margin="0,22,0,0">
@@ -50,7 +50,7 @@
                                     <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="1" Text="{Binding Key}" Margin="10,0" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="2" Text="{Binding Description}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Description}"/>
-                                    <Button Grid.Column="3" Content="&#xE74D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Foreground="{StaticResource DangerBrush}" Style="{StaticResource IconButtonStyle}" Click="DeleteKey_Click" ToolTip="删除或禁用"/>
+                                    <Button Grid.Column="3" Content="&#xE74D;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource DangerBrush}" Style="{StaticResource IconButtonStyle}" Click="DeleteKey_Click" ToolTip="删除或禁用"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

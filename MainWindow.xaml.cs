@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         DefaultEnabled.IsChecked = settings.DefaultRule.Enabled;
         DefaultSingle.IsChecked = settings.DefaultRule.ShowSingleKeys;
         CatalogDefaultEnabled.IsChecked = settings.NewKeysEnabled;
+        StartWithWindowsCheck.IsChecked = settings.StartWithWindows;
         AutoUpdateCheck.IsChecked = settings.CheckForUpdates;
         MaterialCheck.IsChecked = settings.EnableMaterial;
         UpdateChannelSelect.SelectedIndex = settings.UpdateChannel.Equals("full", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
@@ -86,6 +87,7 @@ public partial class MainWindow : Window
         var settings = App.Settings;
         settings.DefaultRule.Enabled = DefaultEnabled.IsChecked == true;
         settings.DefaultRule.ShowSingleKeys = DefaultSingle.IsChecked == true;
+        settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
         settings.Mode = (ModeSelect.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "普通模式";
         settings.CloseToTray = CloseBehavior.SelectedIndex != 1;
         settings.MonitorIndex = Math.Max(0, MonitorSelect.SelectedIndex);
@@ -100,9 +102,11 @@ public partial class MainWindow : Window
         settings.UpdateChannel = (UpdateChannelSelect.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "lite";
         settings.UpdateNetwork = network;
         App.SaveSettings();
+        string? startupError = null;
+        var startupApplied = App.IsVisualQa || StartupRegistration.TryApply(settings.StartWithWindows, out startupError);
         ApplyMaterial();
         App.Overlay?.RefreshPosition();
-        FooterStatusText.Text = "设置已保存";
+        FooterStatusText.Text = startupApplied ? "设置已保存" : $"其他设置已保存；开机自启失败：{startupError}";
     }
 
     private void ModeSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -184,6 +188,9 @@ public partial class MainWindow : Window
     private void ApplyMaterial() => _ = ApplyMaterialForVisualQa(App.Settings.EnableMaterial);
     internal BackdropResult ApplyMaterialForVisualQa(bool enabled) => NativeMethods.ApplyBackdrop(this, RootSurface, enabled);
     internal void NavigateForVisualQa(string tag) => Navigate(tag);
+    internal void ShowStartupSettingForVisualQa() { Navigate("Default"); StartWithWindowsCheck.BringIntoView(); }
+    internal void ShowDefaultTopForVisualQa() { Navigate("Default"); DefaultEnabled.BringIntoView(); }
+    internal void SelectAllCatalogForVisualQa() => CatalogList.SelectAll();
     internal void SetModeForVisualQa(string mode) => ModeSelect.SelectedIndex = mode == ModePolicy.Game ? 1 : mode == ModePolicy.Presentation ? 2 : 0;
     internal void SetGameLevelForVisualQa(int level) { _gameModeLevel = level == 2 ? 2 : 1; if (SelectedMode == ModePolicy.Game) (_gameModeLevel == 2 ? Medium : Low).IsChecked = true; App.Settings.GameModeLevel = _gameModeLevel; }
     internal void SetPositionOffsetForVisualQa(string position, int x, int y) { PositionSelect.SelectedItem = PositionSelect.Items.OfType<ComboBoxItem>().First(item => (string)item.Content == position); App.Settings.OverlayOffsets[position] = new OverlayOffset { X = x, Y = y }; LoadPositionOffset(); App.Settings.OverlayPosition = position; App.Overlay?.RefreshPosition(); }
@@ -200,8 +207,26 @@ public partial class MainWindow : Window
 
     private void CatalogSearch_TextChanged(object sender, TextChangedEventArgs e) => RefreshCatalog();
     private void CatalogDefaultEnabled_Changed(object sender, RoutedEventArgs e) { if (_loading || CatalogDefaultEnabled is null) return; App.Settings.NewKeysEnabled = CatalogDefaultEnabled.IsChecked == true; App.SaveSettings(); }
-    internal void RefreshCatalog() { if (CatalogList is null) return; var query = CatalogSearchBox?.Text?.Trim() ?? string.Empty; CatalogList.ItemsSource = App.Settings.GlobalKeyCatalog.Where(item => query.Length == 0 || item.Key.Contains(query, StringComparison.OrdinalIgnoreCase) || item.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase).ToList(); }
-    private void DeleteCatalogKey_Click(object sender, RoutedEventArgs e) { if ((sender as FrameworkElement)?.DataContext is not KeyRule key) return; App.Settings.GlobalKeyCatalog.Remove(key); var normalized = KeyboardHook.NormalizeForRule(key.Key); if (!App.Settings.IgnoredKeys.Any(item => KeyboardHook.NormalizeForRule(item).Equals(normalized, StringComparison.OrdinalIgnoreCase))) App.Settings.IgnoredKeys.Add(key.Key); App.Settings.DefaultRule.KeyRules = [.. App.Settings.GlobalKeyCatalog.Select(item => item.Clone())]; RefreshCatalog(); App.SaveSettings(); }
+    internal void RefreshCatalog() { if (CatalogList is null) return; var query = CatalogSearchBox?.Text?.Trim() ?? string.Empty; CatalogList.ItemsSource = App.Settings.GlobalKeyCatalog.Where(item => query.Length == 0 || item.Key.Contains(query, StringComparison.OrdinalIgnoreCase) || item.Description.Contains(query, StringComparison.OrdinalIgnoreCase)).OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Key, StringComparer.OrdinalIgnoreCase).ToList(); UpdateCatalogSelection(); }
+    private void CatalogList_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateCatalogSelection();
+    private void UpdateCatalogSelection() { if (CatalogList is null || CatalogSelectionText is null || DeleteSelectedCatalogButton is null) return; var count = CatalogList.SelectedItems.Count; CatalogSelectionText.Text = $"已选 {count} 项"; DeleteSelectedCatalogButton.IsEnabled = count > 0; }
+    private void SelectAllCatalog_Click(object sender, RoutedEventArgs e) => CatalogList.SelectAll();
+    private void DeleteSelectedCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = CatalogList.SelectedItems.OfType<KeyRule>().ToList();
+        if (selected.Count == 0 || !AppDialog.ShowMessage(this, "确认批量删除", $"删除选中的 {selected.Count} 个按键？删除后再次按下不会自动恢复。", true, true)) return;
+        DeleteCatalogKeys(selected);
+    }
+    private void DeleteCatalogKey_Click(object sender, RoutedEventArgs e) { if ((sender as FrameworkElement)?.DataContext is KeyRule key) DeleteCatalogKeys([key]); }
+    private void DeleteCatalogKeys(IEnumerable<KeyRule> keys)
+    {
+        var removed = App.Settings.DeleteCatalogKeys(keys);
+        if (removed == 0) return;
+        RefreshCatalog();
+        App.SaveSettings();
+        FooterStatusText.Text = $"已删除 {removed} 个按键";
+    }
+    private void CatalogKeyEnabled_Click(object sender, RoutedEventArgs e) { App.Settings.SyncDefaultCatalog(); App.SaveSettings(); }
 
     private void AddProxy_Click(object sender, RoutedEventArgs e) { var row = new GithubProxyEditorRow(new GithubProxySetting("https://", 5)); _githubProxies.Add(row); GithubProxyGrid.SelectedItem = row; GithubProxyGrid.ScrollIntoView(row); }
     private void RemoveProxy_Click(object sender, RoutedEventArgs e) { if (GithubProxyGrid.SelectedItem is not GithubProxyEditorRow row) return; if (row.IsDirect) { NetworkErrorText.Text = "GitHub 直连不可删除；可将优先级设为 0。"; return; } _githubProxies.Remove(row); NetworkErrorText.Text = string.Empty; }

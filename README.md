@@ -12,7 +12,7 @@ GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键�
 
 ### 运行方式
 
-Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。
+Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。当前用户开机自启默认开启，可在概览页关闭；自启使用后台模式，不会主动弹出主窗口。
 
 主窗口提供四个页面：概览、应用规则、按键目录、网络与更新。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项。
 
@@ -63,11 +63,12 @@ $env:KEYOVERLAY_DATA_DIR = ".\temp\visual-qa-data"
 下一次接续开发前先读取根目录的 [`CODEX_PROGRESS.md`](CODEX_PROGRESS.md)，再运行其中列出的校准命令。关键入口如下：
 
 - `App.xaml.cs`：设置加载、单实例、托盘、规则合并和生命周期
+- `StartupRegistration.cs`：当前用户开机自启的查询、修复、启用和禁用
 - `KeyboardHook.cs`：全局键盘钩子、按键规范化和前台进程识别
 - `GamepadHook.cs`：XInput 轮询
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
 - `OverlayQueue.cs`、`OverlayWindow.Queue.cs`：200ms 动态提示队列和叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.3.1`）
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.4.0`）
 - `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
 - `GlyphEcho.SmokeTests/`：摇杆、队列、网络、签名和更新包结构回归
 - `VisualQaRunner.cs`：隔离、无输入控制的后台 UI 截图验收

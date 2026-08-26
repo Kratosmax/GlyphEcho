@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application
     internal static bool HookRunning { get; private set; }
     internal static string? SettingsWarning { get; private set; }
     internal static bool IsVisualQa { get; private set; }
+    internal static bool IsBackgroundStartup { get; private set; }
     internal static string? CaptureOutputDirectory { get; private set; }
     internal static void ExitApplication() { IsShuttingDown = true; Current.Shutdown(); }
 
@@ -29,20 +30,26 @@ public partial class App : System.Windows.Application
         var captureIndex = Array.FindIndex(e.Args, value => value.Equals("--capture-ui", StringComparison.OrdinalIgnoreCase));
         CaptureOutputDirectory = captureIndex >= 0 && captureIndex + 1 < e.Args.Length ? Path.GetFullPath(e.Args[captureIndex + 1]) : null;
         IsVisualQa = CaptureOutputDirectory is not null || e.Args.Contains("--visual-qa", StringComparer.OrdinalIgnoreCase);
+        IsBackgroundStartup = ShouldStartInBackground(e.Args, IsVisualQa);
         var mutexName = IsVisualQa ? "GlyphEcho.VisualQa.0.2" : "GlyphEcho.SingleInstance.0.1";
         _singleInstanceMutex = new Mutex(true, mutexName, out var created); if (!created) { AppDialog.ShowMessage(null, "GlyphEcho", "GlyphEcho 已经在运行中。"); Shutdown(); return; }
         Settings = LoadSettings();
         Settings.NormalizeCatalog();
+        if (!IsVisualQa && !StartupRegistration.TryApply(Settings.StartWithWindows, out var startupError))
+        {
+            var warning = $"开机自启设置无法应用，程序仍可正常运行。\n原因：{startupError}";
+            SettingsWarning = string.IsNullOrWhiteSpace(SettingsWarning) ? warning : $"{SettingsWarning}\n\n{warning}";
+        }
         SaveSettings();
         MainWindowInstance = new MainWindow();
         Overlay = new OverlayWindow();
         if (!IsVisualQa)
         {
             _hook = new KeyboardHook();
-            _hook.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
+            _hook.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { if (RecordObservedKey(args.CatalogKey)) MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
             HookRunning = _hook.Start();
             _gamepad = new GamepadHook();
-            _gamepad.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { RecordObservedKey(args.CatalogKey); MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
+            _gamepad.KeyPressed += (_, args) => Dispatcher.BeginInvoke(() => { if (RecordObservedKey(args.CatalogKey)) MainWindowInstance?.RefreshCatalog(); Overlay?.Present(args.Display, args.ForegroundApp, ResolveRule(args.ForegroundPath)); });
             _tray = new Forms.NotifyIcon { Icon = LoadApplicationIcon(), Visible = true, Text = "GlyphEcho" };
             var menu = new Forms.ContextMenuStrip();
             menu.Items.Add("打开设置", null, (_, _) => Dispatcher.Invoke(() => { MainWindowInstance?.Show(); MainWindowInstance?.Activate(); }));
@@ -54,7 +61,7 @@ public partial class App : System.Windows.Application
         MainWindowInstance.UpdateListenerStatus(HookRunning);
         if (!string.IsNullOrWhiteSpace(SettingsWarning)) AppDialog.ShowMessage(MainWindowInstance, "GlyphEcho", SettingsWarning);
         if (CaptureOutputDirectory is not null) MainWindowInstance.ShowActivated = false;
-        MainWindowInstance.Show();
+        if (!IsBackgroundStartup || !string.IsNullOrWhiteSpace(SettingsWarning)) MainWindowInstance.Show();
         if (CaptureOutputDirectory is not null)
             _ = Dispatcher.BeginInvoke(async () => await VisualQaRunner.RunAsync(MainWindowInstance, CaptureOutputDirectory));
         else if (Settings.CheckForUpdates)
@@ -96,6 +103,8 @@ public partial class App : System.Windows.Application
         return (System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone();
     }
 
+    internal static bool ShouldStartInBackground(IEnumerable<string> args, bool isVisualQa) => !isVisualQa && args.Contains("--background", StringComparer.OrdinalIgnoreCase);
+
     private static void OnDisplaySettingsChanged(object? sender, EventArgs e) => Current.Dispatcher.BeginInvoke(() => MainWindowInstance?.RefreshMonitors());
 
     internal static DisplayRule ResolveRule(string appPath)
@@ -115,7 +124,7 @@ public partial class App : System.Windows.Application
         return ModePolicy.Apply(resolved, Settings.Mode, Settings.GameModeLevel);
     }
     private static List<KeyRule> MergeKeyRules(DisplayRule special) { if (!special.UseGlobalCatalog) return [.. special.KeyRules.Select(x => x.Clone())]; var merged = Settings.GlobalKeyCatalog.Select(x => x.Clone()).ToList(); foreach (var overrideRule in special.KeyRules) { var normalized = KeyboardHook.NormalizeForRule(overrideRule.Key); var existing = merged.FirstOrDefault(x => KeyboardHook.NormalizeForRule(x.Key).Equals(normalized, StringComparison.OrdinalIgnoreCase)); if (existing is null) merged.Add(overrideRule.Clone()); else { existing.Enabled = overrideRule.Enabled; existing.Description = string.IsNullOrWhiteSpace(overrideRule.Description) ? existing.Description : overrideRule.Description; } } return merged; }
-    internal static void RecordObservedKey(string display) { var normalized = KeyboardHook.NormalizeForRule(display); if (string.IsNullOrWhiteSpace(display) || Settings.IgnoredKeys.Any(x => KeyboardHook.NormalizeForRule(x).Equals(normalized, StringComparison.OrdinalIgnoreCase)) || Settings.GlobalKeyCatalog.Any(x => KeyboardHook.NormalizeForRule(x.Key).Equals(normalized, StringComparison.OrdinalIgnoreCase))) return; Settings.GlobalKeyCatalog.Add(new KeyRule { Key = display, Enabled = Settings.NewKeysEnabled, CreatedAt = DateTimeOffset.UtcNow }); Settings.DefaultRule.KeyRules = [.. Settings.GlobalKeyCatalog.Select(x => x.Clone())]; SaveSettings(); }
+    internal static bool RecordObservedKey(string display) { if (!Settings.TryAddObservedKey(display)) return false; SaveSettings(); return true; }
     internal static void SaveSettings() { lock (SettingsGate) { try { var path = TrySettingsPath(); if (path is null) return; var temp = path + ".tmp"; File.WriteAllText(temp, JsonSerializer.Serialize(Settings, new JsonSerializerOptions { WriteIndented = true })); File.Move(temp, path, true); } catch (Exception ex) { SettingsWarning ??= $"设置无法保存，程序仍可运行，但本次修改不会持久化。\n原因：{ex.Message}"; } } }
     private static KeySettings LoadSettings() { try { var path = TrySettingsPath(); return path is not null && File.Exists(path) ? JsonSerializer.Deserialize<KeySettings>(File.ReadAllText(path)) ?? KeySettings.Default : KeySettings.Default; } catch (Exception ex) { var path = TrySettingsPath(); if (path is not null && File.Exists(path)) { var backup = path + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".json"; try { File.Move(path, backup, true); SettingsWarning = $"设置文件无法读取，已备份为：{Path.GetFileName(backup)}\n原因：{ex.Message}"; } catch { SettingsWarning = $"设置文件无法读取，程序已使用默认设置。\n原因：{ex.Message}"; } } return KeySettings.Default; } }
     private static string? TrySettingsPath() { try { var dir = Environment.GetEnvironmentVariable("KEYOVERLAY_DATA_DIR") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GlyphEcho"); Directory.CreateDirectory(dir); return Path.Combine(dir, "settings.json"); } catch (Exception ex) { SettingsWarning ??= $"设置目录不可写，程序将使用临时设置运行。\n原因：{ex.Message}"; return null; } }
@@ -124,6 +133,8 @@ public partial class App : System.Windows.Application
 
 public sealed class KeySettings
 {
+    private readonly HashSet<string> _catalogIndex = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _ignoredIndex = new(StringComparer.OrdinalIgnoreCase);
     public DisplayRule DefaultRule { get; set; } = new();
     public List<KeyRule> GlobalKeyCatalog { get; set; } = [];
     public List<DisplayRule> Rules { get; set; } = [];
@@ -139,9 +150,39 @@ public sealed class KeySettings
     public string UpdateChannel { get; set; } = "lite";
     public UpdateNetworkSettings UpdateNetwork { get; set; } = UpdateNetworkSettings.Default;
     public bool NewKeysEnabled { get; set; } = true;
+    public bool StartWithWindows { get; set; } = true;
     public List<string> IgnoredKeys { get; set; } = [];
     public static KeySettings Default => new() { DefaultRule = new DisplayRule { Name = "默认规则", Level = 2, Enabled = true, HiddenKeys = ["CapsLock", "NumLock", "Scroll"] }, Rules = [] };
-    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; DefaultRule.KeyRules = [.. GlobalKeyCatalog.Select(x => x.Clone())]; GameModeLevel = GameModeLevel == 2 ? 2 : 1; OverlayOffsets ??= []; foreach (var position in OverlayPositions) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) OverlayOffsets[position] = new OverlayOffset(); else offset.Normalize(); } UpdateNetwork = (UpdateNetwork ?? UpdateNetworkSettings.Default).Normalize(); }
+    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; SyncDefaultCatalog(); RebuildCatalogIndexes(); GameModeLevel = GameModeLevel == 2 ? 2 : 1; OverlayOffsets ??= []; foreach (var position in OverlayPositions) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) OverlayOffsets[position] = new OverlayOffset(); else offset.Normalize(); } UpdateNetwork = (UpdateNetwork ?? UpdateNetworkSettings.Default).Normalize(); }
+    internal bool TryAddObservedKey(string display)
+    {
+        var normalized = KeyboardHook.NormalizeForRule(display);
+        if (string.IsNullOrWhiteSpace(display) || string.IsNullOrWhiteSpace(normalized) || _ignoredIndex.Contains(normalized) || !_catalogIndex.Add(normalized)) return false;
+        GlobalKeyCatalog.Add(new KeyRule { Key = display, Enabled = NewKeysEnabled, CreatedAt = DateTimeOffset.UtcNow });
+        SyncDefaultCatalog();
+        return true;
+    }
+    internal int DeleteCatalogKeys(IEnumerable<KeyRule> keys)
+    {
+        var selected = keys.Select(key => (Key: key.Key, Normalized: KeyboardHook.NormalizeForRule(key.Key))).Where(item => !string.IsNullOrWhiteSpace(item.Normalized)).GroupBy(item => item.Normalized, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).ToList();
+        if (selected.Count == 0) return 0;
+        var normalizedKeys = selected.Select(item => item.Normalized).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = GlobalKeyCatalog.RemoveAll(item => normalizedKeys.Contains(KeyboardHook.NormalizeForRule(item.Key)));
+        if (removed == 0) return 0;
+        foreach (var item in selected)
+            if (_ignoredIndex.Add(item.Normalized)) IgnoredKeys.Add(item.Key);
+        SyncDefaultCatalog();
+        RebuildCatalogIndexes();
+        return removed;
+    }
+    internal void SyncDefaultCatalog() => DefaultRule.KeyRules = [.. GlobalKeyCatalog.Select(item => item.Clone())];
+    private void RebuildCatalogIndexes()
+    {
+        _catalogIndex.Clear();
+        _ignoredIndex.Clear();
+        foreach (var item in GlobalKeyCatalog) _catalogIndex.Add(KeyboardHook.NormalizeForRule(item.Key));
+        foreach (var item in IgnoredKeys) _ignoredIndex.Add(KeyboardHook.NormalizeForRule(item));
+    }
     internal OverlayOffset GetOverlayOffset(string position) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) { offset = new OverlayOffset(); OverlayOffsets[position] = offset; } return offset; }
     private static Dictionary<string, OverlayOffset> CreateDefaultOffsets() => OverlayPositions.ToDictionary(position => position, _ => new OverlayOffset());
     private static readonly string[] OverlayPositions = ["右下", "右上", "左下", "左上"];

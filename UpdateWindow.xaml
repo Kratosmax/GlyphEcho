@@ -10,7 +10,7 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="1"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel><TextBlock FontSize="22" FontWeight="SemiBold" Text="发现新版本"/><TextBlock x:Name="VersionText" Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel>
-                <Border Grid.Column="1" Width="42" Height="42" Background="#18147D76" CornerRadius="6"><TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PrimaryBrush}" Text="&#xE777;"/></Border>
+                <Border Grid.Column="1" Width="42" Height="42" Background="#18147D76" CornerRadius="6"><TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PrimaryBrush}" Text="&#xE777;"/></Border>
             </Grid>
             <TextBlock Grid.Row="1" Margin="0,20,0,10" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" Text="更新内容"/>
             <Border Grid.Row="2" Background="#D7DEE0"/>
