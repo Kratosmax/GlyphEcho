@@ -10,22 +10,21 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前候选版本为 `0.5.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前版本为 `0.5.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`cd5a732`（0.4.0 发布状态文档）
-- 当前状态：0.5.0 本地候选已完成构建和自动验证，等待提交、标签、Actions 与线上核验
-- 远程状态：`main`、`0.4.0` 标签和 Release 已推送；Actions `32923875405` 成功，GitHub `latest` 已指向 0.4.0
-- 当前工作：为 0.5.0 新增六种提示色板，修复低级提示重复分行和更新器跨卷替换
-- 当前正式版本仍为 `0.4.0`；0.5.0 尚未推送标签，不能描述为已发布
+- 提交基线：`232d6ea`（0.5.0 标签提交）
+- 当前状态：0.5.0 已发布并完成线上资产、双签名和上一正式版升级链核验
+- 远程状态：`main`、`0.5.0` 标签和 Release 已推送；Actions `32927973532` 成功，GitHub `latest` 已指向 0.5.0
+- 当前工作：0.5.0 的六种提示色板、重复提示合并和更新器跨卷修复已交付
+- 当前正式版本为 `0.5.0`；版本、标签、Release 正文、八项资产和更新清单一致
 
 ## 当前待办
 
-- 已授权发布 0.5.0；下一步提交当前候选、创建并推送 `0.5.0` 标签，等待 Actions 成功后核验八项线上资产与签名清单
-- 使用上一正式版 0.4.0 原始 Lite 客户端验证线上 0.5.0 同盘升级链
-- 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 Release Notes 已加入过渡说明，不得覆盖既有 0.4.0 资产
+- 当前没有已授权但未完成的开发或发布任务，等待用户后续需求
+- 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 0.5.0 Release Notes 已加入过渡说明，不得覆盖既有历史资产
 
 ## 本轮实现
 
@@ -88,6 +87,11 @@ Get-Content .\GlyphEcho.csproj
 - `scripts/Build-ReleaseAssets.ps1 -Version 0.5.0`：Full/Lite ZIP 和两个 Setup 均生成，主程序、更新器、安装器版本均为 `0.5.0.0`
 - 源码与 Lite 预览真实 WPF `PrintWindow` 验收均为 success，各 17 张截图；包含六色色板页、深色提示、浅色玫红提示、最小窗口、不透明回退和双屏定位
 - 当前截图可由程序自动确认尺寸、颜色采样和坐标，但本轮 `view_image` 受 Windows ACL 辅助器故障影响，尚未完成人工观感确认
+- Actions `32927973532` 在 3 分 1 秒内成功；Release 为非草稿、非预发布，GitHub `latest` 指向 0.5.0
+- 线上 Release 包含 Full/Lite Setup、Full/Lite ZIP、`SHA256SUMS.txt`、`update.json`、`update-lite.json`、`update-full.json` 共八项资产
+- 线上 Lite/Full 清单的包大小和 SHA-256 与 GitHub 资产 digest、`SHA256SUMS.txt` 一致；legacy 与 V2 签名均通过客户端内置 RSA 公钥验证
+- `update.json` 与 `update-lite.json` 字节一致，Release 正文只包含 0.5.0 当前版本内容
+- 原始 0.4.0 Lite 客户端在同卷事务目录下完成真实线上升级：获取清单、签名验证、下载、包预检、更新器替换均成功，最终 EXE 为 `0.5.0.0`；证据为 `temp/upgrade-040-to-050/upgrade-status-final.json`
 
 ```powershell
 dotnet build .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --disable-build-servers
@@ -140,6 +144,7 @@ git status --short --branch
 
 ## 尚未验证
 
+- 由于本轮 Windows ACL 辅助器故障，模型未能直接读取 0.5.0 截图进行人工观感复核；真实窗口捕获、非空像素、尺寸和双屏坐标自动验收已通过
 - 未在本轮自动测试窗口内人工推动左右摇杆、按真实 M1-M4；XInput 连接和静止状态已确认
 - 飞智黑武士 4 Pro 当前只暴露标准 XInput 字段；原生 M1-M4 仍无可验证协议。需在飞智空间站将背键映射为 F13-F16 后实测
 
@@ -161,7 +166,7 @@ git status --short --branch
 - 所有网络线路执行同一套签名、哈希、通道和包结构校验
 - 保留 Per-Monitor-V2 和目标显示器物理像素定位，不能重新用当前窗口的 WPF 变换换算另一块屏幕
 - 不提交密钥、令牌、代理凭据、用户配置、`bin/obj/temp`、日志和本地截图
-- 用户已明确授权提交、推送、创建 `0.4.0` 标签和 Release；不得覆盖既有 0.3.x 资产，该授权不自动延续到后续无关版本
+- 用户已明确授权并完成 `0.5.0` 的提交、推送、标签和 Release；不得覆盖既有 0.3.x、0.4.0 或 0.5.0 资产，该授权不自动延续到后续版本
 
 ## 维护规则
 
