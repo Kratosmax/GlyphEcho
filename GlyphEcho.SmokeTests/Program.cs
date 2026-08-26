@@ -7,6 +7,7 @@ var tests = new (string Name, Action Run)[]
 {
     ("摇杆方向与死区", TestStickDirections),
     ("提示队列合并与过期前移", TestOverlayQueue),
+    ("提示色板与配置兼容", TestOverlayPalettes),
     ("模式覆盖规则", TestModePolicy),
     ("提示位置微调与持久化", TestOverlayOffsets),
     ("按键目录查重与批量删除", TestCatalogIndex),
@@ -51,6 +52,42 @@ static void TestOverlayQueue()
     Equal(2, initial.Count);
     Equal(2, initial[0].Count);
     Equal("Ctrl + V", queue.Snapshot(start.AddMilliseconds(1450))[0].Presentation.Display);
+
+    var lowQueue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
+    lowQueue.Add(new OverlayPresentation("Ctrl + Alt + W", "AppA", "", "", 1), start);
+    lowQueue.Add(new OverlayPresentation("Ctrl + Alt + W", "AppB", "", "", 1), start.AddMilliseconds(50));
+    var lowItems = lowQueue.Snapshot(start.AddMilliseconds(50));
+    Equal(1, lowItems.Count);
+    Equal(2, lowItems[0].Count);
+
+    var mediumQueue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
+    mediumQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "来源 A", "", 2), start);
+    mediumQueue.Add(new OverlayPresentation("Ctrl + C", "AppB", "来源 B", "", 2), start.AddMilliseconds(50));
+    Equal(2, mediumQueue.Snapshot(start.AddMilliseconds(50)).Count);
+
+    var highQueue = new OverlayQueue(TimeSpan.FromMilliseconds(1300));
+    highQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "同一来源", "复制", 3), start);
+    highQueue.Add(new OverlayPresentation("Ctrl + C", "AppA", "同一来源", "其他功能", 3), start.AddMilliseconds(50));
+    Equal(2, highQueue.Snapshot(start.AddMilliseconds(50)).Count);
+}
+
+static void TestOverlayPalettes()
+{
+    Equal(6, OverlayPaletteCatalog.All.Count);
+    Equal(6, OverlayPaletteCatalog.All.Select(item => item.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    Equal(OverlayPaletteCatalog.DefaultId, OverlayPaletteCatalog.Normalize("unknown"));
+    Equal("light-rose", OverlayPaletteCatalog.Normalize("LIGHT-ROSE"));
+
+    var settings = KeySettings.Default;
+    settings.OverlayPalette = "LIGHT-BLUE";
+    settings.NormalizeCatalog();
+    Equal("light-blue", settings.OverlayPalette);
+
+    foreach (var palette in OverlayPaletteCatalog.All)
+    {
+        True(ContrastRatio(palette.Accent, palette.Surface) >= 4.5);
+        True(ContrastRatio(palette.KeyText, palette.KeySurface) >= 4.5);
+    }
 }
 
 static void TestModePolicy()
@@ -208,6 +245,23 @@ static void WriteEntry(System.IO.Compression.ZipArchive archive, string name, st
 
 static string Sign(RSA rsa, string payload) => Convert.ToBase64String(
     rsa.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+
+static double ContrastRatio(System.Windows.Media.Color foreground, System.Windows.Media.Color background)
+{
+    static double Luminance(System.Windows.Media.Color color)
+    {
+        static double Channel(byte value)
+        {
+            var normalized = value / 255d;
+            return normalized <= 0.04045 ? normalized / 12.92 : Math.Pow((normalized + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * Channel(color.R) + 0.7152 * Channel(color.G) + 0.0722 * Channel(color.B);
+    }
+
+    var first = Luminance(foreground);
+    var second = Luminance(background);
+    return (Math.Max(first, second) + 0.05) / (Math.Min(first, second) + 0.05);
+}
 
 static void Equal<T>(T expected, T actual)
 {

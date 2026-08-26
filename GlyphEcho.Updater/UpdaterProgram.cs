@@ -35,8 +35,8 @@ try
     VerifyPackage(package, manifest);
     try { using var process = Process.GetProcessById(pid); if (!process.WaitForExit(30000)) return 3; } catch (ArgumentException) { }
 
-    var stage = Path.Combine(Path.GetTempPath(), "GlyphEcho-stage-" + Guid.NewGuid().ToString("N"));
-    var backup = target + ".backup-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+    var transactionId = Guid.NewGuid().ToString("N");
+    var (stage, backup) = TransactionPaths(target, transactionId);
     Directory.CreateDirectory(stage);
     try
     {
@@ -79,6 +79,16 @@ catch (Exception ex)
     }
     catch { }
     return 4;
+}
+
+static (string Stage, string Backup) TransactionPaths(string target, string transactionId)
+{
+    var fullTarget = Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar);
+    var parent = Path.GetDirectoryName(fullTarget) ?? throw new InvalidOperationException("更新目标目录缺少父目录。");
+    var name = Path.GetFileName(fullTarget);
+    return (
+        Path.Combine(parent, $"{name}.stage-{transactionId}"),
+        Path.Combine(parent, $"{name}.backup-{transactionId}"));
 }
 
 static Dictionary<string, string> ParseArguments(string[] values)
@@ -194,6 +204,19 @@ static int RunSelfTest()
         }
         catch (InvalidDataException) { }
         Directory.Delete(stage, true);
+
+        var transactionTarget = Path.Combine(root, "portable-drive", "GlyphEcho");
+        var (transactionStage, transactionBackup) = TransactionPaths(transactionTarget, "selftest");
+        if (!string.Equals(Path.GetDirectoryName(transactionTarget), Path.GetDirectoryName(transactionStage), StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetPathRoot(transactionTarget), Path.GetPathRoot(transactionStage), StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetDirectoryName(transactionTarget), Path.GetDirectoryName(transactionBackup), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("更新事务目录未与目标目录保持同卷同父级。");
+        Directory.CreateDirectory(transactionStage);
+        File.WriteAllText(Path.Combine(transactionStage, "marker.txt"), "same-volume");
+        Directory.Move(transactionStage, transactionTarget);
+        if (!File.Exists(Path.Combine(transactionTarget, "marker.txt"))) throw new InvalidOperationException("同卷 stage 未能原子移动到目标目录。");
+        Directory.Delete(transactionTarget, true);
+        Console.WriteLine("PASS 更新事务目录同卷替换");
 
         using (var archive = ZipFile.Open(unsafeZip, ZipArchiveMode.Create))
         {

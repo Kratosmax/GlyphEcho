@@ -4,7 +4,6 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 using MediaBrushes = System.Windows.Media.Brushes;
-using MediaColor = System.Windows.Media.Color;
 
 namespace GlyphEcho;
 
@@ -22,6 +21,7 @@ public partial class OverlayWindow : Window
     }
 
     internal void RefreshPosition() => Position();
+    internal void RefreshStyle() => RefreshQueue();
 
     internal void Present(string display, string app, DisplayRule rule)
     {
@@ -63,7 +63,9 @@ public partial class OverlayWindow : Window
     private void Render(IReadOnlyList<OverlayQueueSnapshot> items)
     {
         var compact = items.All(item => item.Presentation.Level == 1);
-        Surface.Background = compact ? MediaBrushes.Transparent : new SolidColorBrush(MediaColor.FromArgb(242, 24, 37, 41));
+        var palette = OverlayPaletteCatalog.Resolve(App.Settings.OverlayPalette);
+        Surface.Background = compact ? MediaBrushes.Transparent : new SolidColorBrush(palette.Surface);
+        Surface.BorderBrush = new SolidColorBrush(palette.Border);
         Surface.BorderThickness = compact ? new Thickness(0) : new Thickness(1);
         Surface.Padding = compact ? new Thickness(0) : new Thickness(10, 9, 10, 9);
         Surface.CornerRadius = new CornerRadius(compact ? 0 : 8);
@@ -78,7 +80,7 @@ public partial class OverlayWindow : Window
                 row.Children.Add(new TextBlock
                 {
                     Text = item.Presentation.Source,
-                    Foreground = new SolidColorBrush(MediaColor.FromRgb(187, 208, 210)),
+                    Foreground = new SolidColorBrush(palette.SourceText),
                     FontSize = 10,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     MaxWidth = 480
@@ -88,7 +90,7 @@ public partial class OverlayWindow : Window
             var keys = new WrapPanel { Margin = new Thickness(0, item.Presentation.Level >= 2 ? 4 : 0, 0, 0) };
             foreach (var part in item.Presentation.Display.Split(" + ", StringSplitOptions.RemoveEmptyEntries))
             {
-                keys.Children.Add(CreateKey(part));
+                keys.Children.Add(CreateKey(part, palette));
             }
             if (item.Count > 1)
             {
@@ -97,7 +99,7 @@ public partial class OverlayWindow : Window
                     Text = $"× {item.Count}",
                     FontSize = 13,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(MediaColor.FromRgb(97, 210, 198)),
+                    Foreground = new SolidColorBrush(palette.Accent),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(5, 0, 2, 0)
                 });
@@ -109,7 +111,7 @@ public partial class OverlayWindow : Window
                 row.Children.Add(new TextBlock
                 {
                     Text = item.Presentation.Action,
-                    Foreground = new SolidColorBrush(MediaColor.FromRgb(97, 210, 198)),
+                    Foreground = new SolidColorBrush(palette.Accent),
                     FontSize = 10,
                     Margin = new Thickness(0, 4, 0, 0)
                 });
@@ -118,9 +120,11 @@ public partial class OverlayWindow : Window
         }
     }
 
-    private static Border CreateKey(string text) => new()
+    private static Border CreateKey(string text, OverlayPalette palette) => new()
     {
-        Background = new SolidColorBrush(MediaColor.FromRgb(35, 58, 62)),
+        Background = new SolidColorBrush(palette.KeySurface),
+        BorderBrush = new SolidColorBrush(palette.KeyBorder),
+        BorderThickness = palette.IsDark ? new Thickness(0) : new Thickness(1),
         CornerRadius = new CornerRadius(4),
         Padding = new Thickness(8, 4, 8, 4),
         Margin = new Thickness(0, 0, 4, 0),
@@ -129,7 +133,7 @@ public partial class OverlayWindow : Window
             Text = text,
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
-            Foreground = MediaBrushes.White
+            Foreground = new SolidColorBrush(palette.KeyText)
         }
     };
 

@@ -58,6 +58,7 @@ public partial class MainWindow : Window
         _gameModeLevel = settings.GameModeLevel;
         _displayedMode = settings.Mode;
         CloseBehavior.SelectedIndex = settings.CloseToTray ? 0 : 1;
+        SelectOverlayPalette(settings.OverlayPalette);
         PositionSelect.SelectedItem = PositionSelect.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (string)item.Content == settings.OverlayPosition) ?? PositionSelect.Items[0];
         _displayedPosition = settings.OverlayPosition;
         LoadPositionOffset();
@@ -92,6 +93,7 @@ public partial class MainWindow : Window
         settings.CloseToTray = CloseBehavior.SelectedIndex != 1;
         settings.MonitorIndex = Math.Max(0, MonitorSelect.SelectedIndex);
         settings.OverlayPosition = SelectedPosition;
+        settings.OverlayPalette = SelectedOverlayPalette;
         settings.OverlayOffsets[SelectedPosition] = offset;
         if (SelectedMode == ModePolicy.Normal) _configuredDefaultLevel = SelectedLevel;
         else if (SelectedMode == ModePolicy.Game) _gameModeLevel = SelectedLevel == 2 ? 2 : 1;
@@ -106,6 +108,7 @@ public partial class MainWindow : Window
         var startupApplied = App.IsVisualQa || StartupRegistration.TryApply(settings.StartWithWindows, out startupError);
         ApplyMaterial();
         App.Overlay?.RefreshPosition();
+        App.Overlay?.RefreshStyle();
         FooterStatusText.Text = startupApplied ? "设置已保存" : $"其他设置已保存；开机自启失败：{startupError}";
     }
 
@@ -122,6 +125,8 @@ public partial class MainWindow : Window
     private string SelectedMode => (ModeSelect.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "普通模式";
     private int SelectedLevel => High.IsChecked == true ? 3 : Low.IsChecked == true ? 1 : 2;
     private string SelectedPosition => (PositionSelect.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "右下";
+    private string SelectedOverlayPalette => PaletteOptions.FirstOrDefault(option => option.IsChecked == true)?.Tag?.ToString() ?? OverlayPaletteCatalog.DefaultId;
+    private System.Windows.Controls.RadioButton[] PaletteOptions => [PaletteDarkMint, PaletteDarkBlue, PaletteDarkAmber, PaletteLightTeal, PaletteLightBlue, PaletteLightRose];
 
     private void UpdateModeUi()
     {
@@ -185,11 +190,28 @@ public partial class MainWindow : Window
         FooterStatusText.Text = $"{SelectedPosition}的位置微调已重置";
     }
 
+    private void SelectOverlayPalette(string id)
+    {
+        var normalized = OverlayPaletteCatalog.Normalize(id);
+        PaletteOptions.First(option => option.Tag?.ToString() == normalized).IsChecked = true;
+    }
+
+    private void OverlayPalette_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_loading || sender is not System.Windows.Controls.RadioButton { IsChecked: true } option) return;
+        App.Settings.OverlayPalette = OverlayPaletteCatalog.Normalize(option.Tag?.ToString());
+        App.SaveSettings();
+        App.Overlay?.RefreshStyle();
+        FooterStatusText.Text = $"提示色板已切换为{OverlayPaletteCatalog.Resolve(App.Settings.OverlayPalette).Label}";
+    }
+
     private void ApplyMaterial() => _ = ApplyMaterialForVisualQa(App.Settings.EnableMaterial);
     internal BackdropResult ApplyMaterialForVisualQa(bool enabled) => NativeMethods.ApplyBackdrop(this, RootSurface, enabled);
     internal void NavigateForVisualQa(string tag) => Navigate(tag);
     internal void ShowStartupSettingForVisualQa() { Navigate("Default"); StartWithWindowsCheck.BringIntoView(); }
     internal void ShowDefaultTopForVisualQa() { Navigate("Default"); DefaultEnabled.BringIntoView(); }
+    internal void ShowPaletteSettingForVisualQa() { Navigate("Default"); PaletteDarkMint.BringIntoView(); }
+    internal void SetOverlayPaletteForVisualQa(string id) => SelectOverlayPalette(id);
     internal void SelectAllCatalogForVisualQa() => CatalogList.SelectAll();
     internal void SetModeForVisualQa(string mode) => ModeSelect.SelectedIndex = mode == ModePolicy.Game ? 1 : mode == ModePolicy.Presentation ? 2 : 0;
     internal void SetGameLevelForVisualQa(int level) { _gameModeLevel = level == 2 ? 2 : 1; if (SelectedMode == ModePolicy.Game) (_gameModeLevel == 2 ? Medium : Low).IsChecked = true; App.Settings.GameModeLevel = _gameModeLevel; }

@@ -10,24 +10,29 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前为 `0.4.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前候选版本为 `0.5.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-26
-- 提交基线：`ae3e116e0da5096295dca4de89571527909c6d38`（0.4.0 标签）
-- 当前状态：0.4.0 已发布；同盘自动升级成功，但非系统盘便携目录存在跨卷替换缺陷
+- 提交基线：`cd5a732`（0.4.0 发布状态文档）
+- 当前状态：0.5.0 本地候选已完成构建和自动验证，等待提交、标签、Actions 与线上核验
 - 远程状态：`main`、`0.4.0` 标签和 Release 已推送；Actions `32923875405` 成功，GitHub `latest` 已指向 0.4.0
-- 当前工作：Win10 图标兼容、按键目录批量删除、查重性能优化和当前用户开机自启已随 0.4.0 发布
-- 当前正式版本为 `0.4.0`；版本号、主界面显示、更新器发布参数、安装器参数和发布说明已统一
+- 当前工作：为 0.5.0 新增六种提示色板，修复低级提示重复分行和更新器跨卷替换
+- 当前正式版本仍为 `0.4.0`；0.5.0 尚未推送标签，不能描述为已发布
 
 ## 当前待办
 
-- P0：更新器 stage 使用系统 `%TEMP%`，当 GlyphEcho 便携目录位于另一卷时，`Directory.Move(stage, target)` 会失败；修复需发布新版本且不能覆盖 0.4.0
-- 0.3.1/0.4.0 非系统盘便携用户无法依靠现有自动更新器跨过该缺陷，需要在下一版 README 与 Release Notes 提供手动覆盖安装过渡说明
-- 新版本号、修复与再次发布尚未获得用户授权；在获得授权前不创建 0.4.1 标签或 Release
+- 已授权发布 0.5.0；下一步提交当前候选、创建并推送 `0.5.0` 标签，等待 Actions 成功后核验八项线上资产与签名清单
+- 使用上一正式版 0.4.0 原始 Lite 客户端验证线上 0.5.0 同盘升级链
+- 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 Release Notes 已加入过渡说明，不得覆盖既有 0.4.0 资产
 
 ## 本轮实现
+
+- 新增深色薄荷绿、天空蓝、琥珀黄和浅色深青、钴蓝、玫红六种提示色板，设置页使用 `×1 / ×2 / ×3` 预览并即时保存
+- 提示队列按当前级别实际可见内容合并：低级按按键，中级增加来源，高级再增加功能；不再让不可见的前台应用采样变化生成重复行
+- 更新器的 stage 与 backup 改到目标目录同父级，保证事务目录和便携程序位于同一卷
+- 版本源、README 和当前版本发布说明统一更新为 0.5.0，并注明旧便携版跨卷更新的一次性手动升级路径
 
 - 主窗口、规则编辑器和更新窗的图标字体统一为 Win10 自带的 `Segoe MDL2 Assets`，移除 `Segoe Fluent Icons` 依赖
 - 按键目录支持 Ctrl/Shift 多选、全选当前搜索结果、已选计数和带确认的批量删除；选中态横向拉满，单项删除统一居右
@@ -73,6 +78,16 @@ Get-Content .\GlyphEcho.csproj
 - 文档：`README.md`、`CODEX_PROGRESS.md`
 
 ## 本轮验证
+
+0.5.0 候选验证（2026-08-26）：
+
+- `dotnet build .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --disable-build-servers`：0 警告、0 错误
+- `dotnet run --project .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --no-build`：11 项全部通过，覆盖按可见内容合并、色板规范化与 WCAG 4.5 对比度
+- `dotnet run --project .\GlyphEcho.Updater\GlyphEcho.Updater.csproj --configuration Release --no-restore -- --self-test`：同卷事务替换和 ZIP 路径穿越保护通过
+- `scripts/Build-Preview.ps1`：Lite 本地预览包 `temp/preview/GlyphEcho-0.5.0-Lite-local-23028564.zip`，302,721 字节，SHA-256 `F50E559AA8077BDFC2842D2ED0A60E03B8643D8178C56EEFFF4DBBF9A7E947BA`
+- `scripts/Build-ReleaseAssets.ps1 -Version 0.5.0`：Full/Lite ZIP 和两个 Setup 均生成，主程序、更新器、安装器版本均为 `0.5.0.0`
+- 源码与 Lite 预览真实 WPF `PrintWindow` 验收均为 success，各 17 张截图；包含六色色板页、深色提示、浅色玫红提示、最小窗口、不透明回退和双屏定位
+- 当前截图可由程序自动确认尺寸、颜色采样和坐标，但本轮 `view_image` 受 Windows ACL 辅助器故障影响，尚未完成人工观感确认
 
 ```powershell
 dotnet build .\GlyphEcho.SmokeTests\GlyphEcho.SmokeTests.csproj --configuration Release --disable-build-servers

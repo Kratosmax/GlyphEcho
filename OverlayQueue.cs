@@ -21,7 +21,8 @@ internal sealed class OverlayQueue
         var existing = _items.FirstOrDefault(item =>
             KeyboardHook.NormalizeForRule(item.Presentation.Display).Equals(normalized, StringComparison.OrdinalIgnoreCase)
             && item.Presentation.Level == presentation.Level
-            && string.Equals(item.Presentation.App, presentation.App, StringComparison.Ordinal));
+            && (presentation.Level < 2 || string.Equals(item.Presentation.Source, presentation.Source, StringComparison.Ordinal))
+            && (presentation.Level < 3 || string.Equals(item.Presentation.Action, presentation.Action, StringComparison.Ordinal)));
         if (existing is not null)
         {
             existing.Count++;

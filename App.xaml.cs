@@ -143,6 +143,7 @@ public sealed class KeySettings
     public int MonitorIndex { get; set; }
     public string OverlayPosition { get; set; } = "右下";
     public Dictionary<string, OverlayOffset> OverlayOffsets { get; set; } = CreateDefaultOffsets();
+    public string OverlayPalette { get; set; } = OverlayPaletteCatalog.DefaultId;
     public bool CloseToTray { get; set; } = true;
     public string Theme { get; set; } = "浅色";
     public bool CheckForUpdates { get; set; } = true;
@@ -153,7 +154,7 @@ public sealed class KeySettings
     public bool StartWithWindows { get; set; } = true;
     public List<string> IgnoredKeys { get; set; } = [];
     public static KeySettings Default => new() { DefaultRule = new DisplayRule { Name = "默认规则", Level = 2, Enabled = true, HiddenKeys = ["CapsLock", "NumLock", "Scroll"] }, Rules = [] };
-    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; SyncDefaultCatalog(); RebuildCatalogIndexes(); GameModeLevel = GameModeLevel == 2 ? 2 : 1; OverlayOffsets ??= []; foreach (var position in OverlayPositions) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) OverlayOffsets[position] = new OverlayOffset(); else offset.Normalize(); } UpdateNetwork = (UpdateNetwork ?? UpdateNetworkSettings.Default).Normalize(); }
+    public void NormalizeCatalog() { if (GlobalKeyCatalog.Count == 0 && DefaultRule.KeyRules.Count > 0) GlobalKeyCatalog = [.. DefaultRule.KeyRules.Select(x => x.Clone())]; SyncDefaultCatalog(); RebuildCatalogIndexes(); GameModeLevel = GameModeLevel == 2 ? 2 : 1; OverlayPalette = OverlayPaletteCatalog.Normalize(OverlayPalette); OverlayOffsets ??= []; foreach (var position in OverlayPositions) { if (!OverlayOffsets.TryGetValue(position, out var offset) || offset is null) OverlayOffsets[position] = new OverlayOffset(); else offset.Normalize(); } UpdateNetwork = (UpdateNetwork ?? UpdateNetworkSettings.Default).Normalize(); }
     internal bool TryAddObservedKey(string display)
     {
         var normalized = KeyboardHook.NormalizeForRule(display);

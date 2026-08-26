@@ -21,6 +21,9 @@ internal static class VisualQaRunner
             main.ShowStartupSettingForVisualQa();
             await Task.Delay(100);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-startup-setting.png")));
+            main.ShowPaletteSettingForVisualQa();
+            await Task.Delay(100);
+            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-overlay-palettes.png")));
             main.ShowDefaultTopForVisualQa();
 
             main.SetGameLevelForVisualQa(1);
@@ -126,14 +129,20 @@ internal static class VisualQaRunner
             {
                 var previousMonitor = App.Settings.MonitorIndex;
                 var previousPosition = App.Settings.OverlayPosition;
+                var previousPalette = App.Settings.OverlayPalette;
                 var previousRightBottomOffset = App.Settings.GetOverlayOffset("右下").Clone();
                 try
                 {
+                    App.Settings.OverlayPalette = "dark-mint";
                     App.Settings.OverlayOffsets["右下"] = new OverlayOffset { X = -10, Y = 0 };
                     App.Settings.MonitorIndex = 0;
                     App.Settings.OverlayPosition = "右下";
+                    overlay.RefreshStyle();
                     overlay.RefreshPosition();
                     captures.Add(VisualCaptureService.Capture(overlay, Path.Combine(outputDirectory, "overlay-screen1-right-bottom-offset.png")));
+                    App.Settings.OverlayPalette = "light-rose";
+                    overlay.RefreshStyle();
+                    captures.Add(VisualCaptureService.Capture(overlay, Path.Combine(outputDirectory, "overlay-light-rose.png")));
                     if (Forms.Screen.AllScreens.Length > 1)
                     {
                         App.Settings.MonitorIndex = 1;
@@ -146,7 +155,9 @@ internal static class VisualQaRunner
                 {
                     App.Settings.MonitorIndex = previousMonitor;
                     App.Settings.OverlayPosition = previousPosition;
+                    App.Settings.OverlayPalette = previousPalette;
                     App.Settings.OverlayOffsets["右下"] = previousRightBottomOffset;
+                    overlay.RefreshStyle();
                 }
             }
 
