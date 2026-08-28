@@ -10,25 +10,25 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前发布候选版本为 `0.6.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前版本为 `0.6.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-28
-- 提交基线：`de245ce`（`main`，0.6.0 功能提交）
-- 当前状态：0.5.1 已发布并完成线上资产、双签名和 latest 指向核验
-- 远程状态：2026-08-28 已恢复 SSH 主机信任与账号认证，`origin/main` 与本地均为 `de245ce`
-- 当前工作：正在准备 `0.6.0`，本轮已获用户授权提交、推送、打标签和发布
-- 当前正式版本仍为 `0.5.1`；`0.6.0` 尚未打标签，发布完成前不得写成已发布
+- 提交基线：`8d466c2`（0.6.0 标签提交）
+- 当前状态：0.6.0 已发布并完成线上资产、双签名和 latest 指向核验
+- 远程状态：`main` 与 `0.6.0` 标签已推送；Actions `33154930524` 成功，GitHub `latest` 已指向 0.6.0
+- 当前工作：0.6.0 设置页与提示可读性改进已发布
+- 当前正式版本为 `0.6.0`；版本、标签、Release 正文、八项资产和更新清单一致
 
 ## 当前待办
 
-- 提交 0.6.0 发布元数据，推送 `main` 与标签，并完成 GitHub Actions 和线上 Release 验收
+- 当前没有已授权但未完成的开发或发布任务，等待用户后续需求
 - 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 0.5.0 Release Notes 已加入过渡说明，不得覆盖既有历史资产
 
 ## 本轮实现
 
-### 0.6.0 设置页与提示可读性（发布候选）
+### 0.6.0 设置页与提示可读性
 
 - `OverlayWindow.Queue.cs`：将重复次数 `× N` 从裸 `TextBlock` 改为使用当前色板按键底色、边框和圆角的独立徽标；保留仅在重复输入时显示的现有行为
 - `MainWindow.xaml` / `MainWindow.xaml.cs`：侧栏新增“设置”页，将开机自启、关闭窗口行为和 Windows 11 毛玻璃从概览迁移到“启动与退出”“窗口外观”分组；配置字段和保存逻辑保持不变
@@ -38,6 +38,12 @@ Get-Content .\GlyphEcho.csproj
 - 0.6.0 本地候选四包：Full Setup 73,469,468 字节、Full ZIP 102,903,040 字节、Lite Setup 2,607,941 字节、Lite ZIP 311,825 字节
 - 候选 SHA-256：Full Setup `349534650E184009BD509C626E439F0B7EF3239C5D6B8F8B29CB52B0C730DA93`、Full ZIP `B718ADA48B9712B1543D4CF2DE8D851BAF7FC6FB6E334836277A6C18C796343F`、Lite Setup `26F16C79E7C60113C36024652B056215D0245882288A0198EC33E99AE3DBF20F`、Lite ZIP `14CDC7BF8EBB73F495EA410B5A33FF5F6E4062AB0C47BFDA704738FEC428376C`
 - Lite/Full ZIP 分别为 7/466 项，通道标记为 `lite`/`full`；主程序、更新器和安装器版本均为 0.6.0
+- Actions `33154930524` 在 1 分 52 秒内成功；测试、四包构建、校验和、双签名清单和资产上传均通过
+- 0.6.0 Release 为非草稿、非预发布，包含八项资产；GitHub `latest` 返回 0.6.0
+- 线上资产：Full Setup 73,460,442 字节、Full ZIP 102,757,583 字节、Lite Setup 2,606,839 字节、Lite ZIP 311,756 字节
+- 线上 SHA-256：Full Setup `878E73E8759E3FFC9A6AD9BC62DD25AED80F7231F3CBA6CB3B51E1427A78BC61`、Full ZIP `5708DEFF88B8F268ED97226591B9A04115E9668E7CB7C9FEDBB56EACCCFCCD57`、Lite Setup `CF806C6EB8A7A124D2C7E01CE6DE47BBDBB6C2CCB95222DA55B4784CACCA1A6C`、Lite ZIP `3AC736734BE0988B81B2D106BA4FAF8E82CF3B8B7B4F0EF5BBA5FD20AE7989AD`
+- Lite/Full 线上清单的 legacy 与 V2 RSA 签名均通过客户端公钥验证，包大小、digest 和下载 URL 与 GitHub 资产一致；`SHA256SUMS.txt` 覆盖四包，`update.json` 与 `update-lite.json` 字节一致
+- Actions Windows runner 写入清单的发布说明使用 CRLF，本地 Git 文件使用 LF；换行归一化后内容一致，V2 签名已覆盖并验证线上 CRLF 正文
 - `git diff --check` 通过；仅有仓库现有 LF/CRLF 策略提示
 
 ### 0.5.1 可靠性与性能修复
@@ -232,7 +238,7 @@ git status --short --branch
 - 所有网络线路执行同一套签名、哈希、通道和包结构校验
 - 保留 Per-Monitor-V2 和目标显示器物理像素定位，不能重新用当前窗口的 WPF 变换换算另一块屏幕
 - 不提交密钥、令牌、代理凭据、用户配置、`bin/obj/temp`、日志和本地截图
-- 用户已明确授权并完成 `0.5.1` 的提交、推送、标签和 Release；不得覆盖既有 0.3.x、0.4.0、0.5.0 或 0.5.1 资产，该授权不自动延续到后续版本
+- 用户已明确授权并完成 `0.6.0` 的提交、推送、标签和 Release；不得覆盖既有 0.3.x、0.4.0、0.5.0、0.5.1 或 0.6.0 资产，该授权不自动延续到后续版本
 
 ## 维护规则
 
