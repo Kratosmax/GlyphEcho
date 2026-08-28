@@ -12,11 +12,11 @@ GlyphEcho 是一个 Windows 10/11 桌面输入回显工具：在后台监听键�
 
 ### 运行方式
 
-Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。当前用户开机自启默认开启，可在概览页关闭；自启使用后台模式，不会主动弹出主窗口。
+Release 提供四种包：Full/Lite Setup 安装器，以及 Full/Lite ZIP 便携版。Full 包自包含 .NET 运行时，Lite 包需要 .NET 8 Desktop Runtime。程序启动后常驻系统托盘；关闭主窗口默认缩小到托盘，可在设置中改为退出程序。当前用户开机自启默认开启，可在设置页关闭；自启使用后台模式，不会主动弹出主窗口。
 
-> **0.3.1 / 0.4.0 非系统盘便携版升级提示：**旧更新器无法跨磁盘移动事务目录。请先从 [Releases](https://github.com/Kratosmax/GlyphEcho/releases) 下载同通道的 0.5.1 ZIP，右键托盘图标退出 GlyphEcho，再把 ZIP 解压覆盖原程序目录；也可以直接运行 0.5.1 安装器。用户设置保存在 `%LOCALAPPDATA%\GlyphEcho`，手动覆盖程序文件不会删除设置。0.5.0 起已修复后续跨卷自动更新。
+> **0.3.1 / 0.4.0 非系统盘便携版升级提示：**旧更新器无法跨磁盘移动事务目录。请先从 [Releases](https://github.com/Kratosmax/GlyphEcho/releases) 下载同通道的 0.6.0 ZIP，右键托盘图标退出 GlyphEcho，再把 ZIP 解压覆盖原程序目录；也可以直接运行 0.6.0 安装器。用户设置保存在 `%LOCALAPPDATA%\GlyphEcho`，手动覆盖程序文件不会删除设置。0.5.0 起已修复后续跨卷自动更新。
 
-主窗口提供四个页面：概览、应用规则、按键目录、网络与更新。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项。
+主窗口提供五个页面：概览、应用规则、按键目录、网络与更新、设置。按键目录会自动记录监听到的组合键，可以搜索、启用/禁用和删除；应用规则可以引用全局目录并覆盖指定应用的差异项；设置页集中管理开机自启、关闭窗口行为和 Windows 11 毛玻璃。
 
 模式切换会立即保存并作用于键盘、手柄和预览：普通模式遵循默认规则与应用规则；游戏模式强制显示单键，并允许选择低级或中级提示；演示模式强制显示单键并展示按键来源与功能说明。模式下拉框和各选项提供悬浮说明，被模式覆盖的设置会暂时禁用，切回普通模式后恢复原配置。
 
@@ -72,7 +72,7 @@ $env:KEYOVERLAY_DATA_DIR = ".\temp\visual-qa-data"
 - `GamepadHook.cs`：XInput 轮询
 - `MainWindow.xaml(.cs)`：设置、规则和按键目录 UI
 - `OverlayQueue.cs`、`OverlayWindow.Queue.cs`：200ms 动态提示队列和叠加层展示
-- `GlyphEcho.csproj`：唯一版本源（当前 `0.5.1`）
+- `GlyphEcho.csproj`：唯一版本源（当前 `0.6.0`）
 - `GlyphEcho.Updater/`：等待退出、校验、暂存、替换和回滚
 - `GlyphEcho.SmokeTests/`：摇杆、队列、网络、签名和更新包结构回归
 - `VisualQaRunner.cs`：隔离、无输入控制的后台 UI 截图验收

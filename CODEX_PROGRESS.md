@@ -10,31 +10,34 @@ git log -1 --oneline
 Get-Content .\GlyphEcho.csproj
 ```
 
-版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前版本为 `0.5.1`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
+版本唯一来源是 `GlyphEcho.csproj` 的 `<Version>`，当前发布候选版本为 `0.6.0`。默认分支为 `main`，远程仓库为 `https://github.com/Kratosmax/GlyphEcho.git`。
 
 ## 当前快照
 
 - 最后本地核验：2026-08-28
-- 提交基线：`31f7c81`（`main`，0.5.1 发布记录提交）
+- 提交基线：`de245ce`（`main`，0.6.0 功能提交）
 - 当前状态：0.5.1 已发布并完成线上资产、双签名和 latest 指向核验
-- 远程状态：2026-08-28 通过 HTTPS `git ls-remote` 确认 `origin/main` 与本地同为 `31f7c81`；仓库保存的 SSH 远端因本机 GitHub 主机密钥未信任而无法直接拉取
-- 当前工作：重复次数 `× N` 可读性与独立设置页已完成验证，本轮已获用户授权提交并推送 `main`，未授权发布
-- 当前正式版本为 `0.5.1`；版本、标签、Release 正文、八项资产和更新清单一致
+- 远程状态：2026-08-28 已恢复 SSH 主机信任与账号认证，`origin/main` 与本地均为 `de245ce`
+- 当前工作：正在准备 `0.6.0`，本轮已获用户授权提交、推送、打标签和发布
+- 当前正式版本仍为 `0.5.1`；`0.6.0` 尚未打标签，发布完成前不得写成已发布
 
 ## 当前待办
 
-- 当前没有已授权但未完成的开发任务；本轮仅提交并推送 `main`，未授权打标签或发布
+- 提交 0.6.0 发布元数据，推送 `main` 与标签，并完成 GitHub Actions 和线上 Release 验收
 - 0.3.1/0.4.0 非系统盘便携用户仍需一次手动覆盖；README 与 0.5.0 Release Notes 已加入过渡说明，不得覆盖既有历史资产
 
 ## 本轮实现
 
-### 重复次数可读性修复（未发布）
+### 0.6.0 设置页与提示可读性（发布候选）
 
 - `OverlayWindow.Queue.cs`：将重复次数 `× N` 从裸 `TextBlock` 改为使用当前色板按键底色、边框和圆角的独立徽标；保留仅在重复输入时显示的现有行为
 - `MainWindow.xaml` / `MainWindow.xaml.cs`：侧栏新增“设置”页，将开机自启、关闭窗口行为和 Windows 11 毛玻璃从概览迁移到“启动与退出”“窗口外观”分组；配置字段和保存逻辑保持不变
 - `VisualQaRunner.cs`：新增低级透明提示下重复按键，以及设置页标准窗口和最小窗口的真实截图
-- Release 构建：0 警告、0 错误；Smoke Tests 14/14 通过
-- 真实 WPF `--capture-ui` 验收：`temp/ui-captures-settings-page-final/ui-capture-status.json` 为 `success=true`；设置页 1120×740 和 920×640 两种窗口尺寸均无截断或重叠，深浅计数徽标截图清晰
+- Release 构建：0 警告、0 错误；Smoke Tests 14/14 通过；更新器 self-test 通过
+- 真实 WPF `--capture-ui` 验收：`temp/ui-captures-060-candidate/ui-capture-status.json` 为 `success=true`，共 21 张截图；设置页 1120×740 和 920×640 两种窗口尺寸均无截断或重叠，深浅计数徽标截图清晰
+- 0.6.0 本地候选四包：Full Setup 73,469,468 字节、Full ZIP 102,903,040 字节、Lite Setup 2,607,941 字节、Lite ZIP 311,825 字节
+- 候选 SHA-256：Full Setup `349534650E184009BD509C626E439F0B7EF3239C5D6B8F8B29CB52B0C730DA93`、Full ZIP `B718ADA48B9712B1543D4CF2DE8D851BAF7FC6FB6E334836277A6C18C796343F`、Lite Setup `26F16C79E7C60113C36024652B056215D0245882288A0198EC33E99AE3DBF20F`、Lite ZIP `14CDC7BF8EBB73F495EA410B5A33FF5F6E4062AB0C47BFDA704738FEC428376C`
+- Lite/Full ZIP 分别为 7/466 项，通道标记为 `lite`/`full`；主程序、更新器和安装器版本均为 0.6.0
 - `git diff --check` 通过；仅有仓库现有 LF/CRLF 策略提示
 
 ### 0.5.1 可靠性与性能修复
