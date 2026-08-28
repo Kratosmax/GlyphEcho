@@ -97,15 +97,7 @@ public partial class OverlayWindow : Window
             }
             if (item.Count > 1)
             {
-                keys.Children.Add(new TextBlock
-                {
-                    Text = $"× {item.Count}",
-                    FontSize = 13,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(palette.Accent),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(5, 0, 2, 0)
-                });
+                keys.Children.Add(CreateCount(item.Count, palette));
             }
             row.Children.Add(keys);
 
@@ -137,6 +129,23 @@ public partial class OverlayWindow : Window
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
             Foreground = new SolidColorBrush(palette.KeyText)
+        }
+    };
+
+    private static Border CreateCount(int count, OverlayPalette palette) => new()
+    {
+        Background = new SolidColorBrush(palette.KeySurface),
+        BorderBrush = new SolidColorBrush(palette.KeyBorder),
+        BorderThickness = palette.IsDark ? new Thickness(0) : new Thickness(1),
+        CornerRadius = new CornerRadius(4),
+        Padding = new Thickness(7, 4, 7, 4),
+        Margin = new Thickness(1, 0, 2, 0),
+        Child = new TextBlock
+        {
+            Text = $"× {count}",
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(palette.Accent)
         }
     };
 

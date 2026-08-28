@@ -18,9 +18,9 @@ internal static class VisualQaRunner
             var backdrop = main.ApplyMaterialForVisualQa(true);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-overview-acrylic.png")));
 
-            main.ShowStartupSettingForVisualQa();
+            main.ShowSettingsForVisualQa();
             await Task.Delay(100);
-            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-startup-setting.png")));
+            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-settings.png")));
             main.ShowPaletteSettingForVisualQa();
             await Task.Delay(100);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-overlay-palettes.png")));
@@ -62,6 +62,10 @@ internal static class VisualQaRunner
             main.NavigateForVisualQa("Default");
             await Task.Delay(150);
             captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-minimum.png")));
+            main.NavigateForVisualQa("Settings");
+            await Task.Delay(100);
+            captures.Add(VisualCaptureService.Capture(main, Path.Combine(outputDirectory, "main-settings-minimum.png")));
+            main.NavigateForVisualQa("Default");
 
             var fallback = main.ApplyMaterialForVisualQa(false);
             await Task.Delay(100);
@@ -171,6 +175,13 @@ internal static class VisualQaRunner
             await Task.Delay(300);
             if (App.Overlay is { IsVisible: true } singleOverlay)
                 captures.Add(VisualCaptureService.Capture(singleOverlay, Path.Combine(outputDirectory, "overlay-low-single-key.png")));
+
+            await Task.Delay(1500);
+            App.Overlay?.Present("A", "视觉验收", singleKeyRule);
+            App.Overlay?.Present("A", "视觉验收", singleKeyRule);
+            await Task.Delay(300);
+            if (App.Overlay is { IsVisible: true } repeatedSingleOverlay)
+                captures.Add(VisualCaptureService.Capture(repeatedSingleOverlay, Path.Combine(outputDirectory, "overlay-low-repeated-key.png")));
 
             await Task.Delay(1500);
             var detailedRule = new DisplayRule

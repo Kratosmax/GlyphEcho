@@ -41,9 +41,11 @@ public partial class MainWindow : Window
         OverviewPanel.Visibility = tag is "Default" or "Rules" ? Visibility.Visible : Visibility.Collapsed;
         CatalogPanel.Visibility = tag == "Keys" ? Visibility.Visible : Visibility.Collapsed;
         NetworkPanel.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanel.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
         SaveButton.Visibility = tag == "Keys" ? Visibility.Collapsed : Visibility.Visible;
         if (tag == "Keys") { PageTitle.Text = "按键目录"; PageSubtitle.Text = "自动记录 · 搜索、启用和删除全局按键"; RefreshCatalog(); }
         else if (tag == "Network") { PageTitle.Text = "网络与更新"; PageSubtitle.Text = "GitHub 访问线路 · HTTP 代理 · 签名更新"; }
+        else if (tag == "Settings") { PageTitle.Text = "设置"; PageSubtitle.Text = "启动与退出 · 窗口外观"; }
         else { PageTitle.Text = tag == "Rules" ? "应用规则" : "按键展示规则"; PageSubtitle.Text = "全局监听 · 规则按前台进程绝对路径匹配"; Grid.SetColumn(RulesPanel, tag == "Rules" ? 0 : 2); Grid.SetColumnSpan(RulesPanel, tag == "Rules" ? 3 : 1); DefaultPanel.Visibility = tag == "Rules" ? Visibility.Collapsed : Visibility.Visible; }
     }
 
@@ -210,7 +212,7 @@ public partial class MainWindow : Window
     private void ApplyMaterial() => _ = ApplyMaterialForVisualQa(App.Settings.EnableMaterial);
     internal BackdropResult ApplyMaterialForVisualQa(bool enabled) => NativeMethods.ApplyBackdrop(this, RootSurface, enabled);
     internal void NavigateForVisualQa(string tag) => Navigate(tag);
-    internal void ShowStartupSettingForVisualQa() { Navigate("Default"); StartWithWindowsCheck.BringIntoView(); }
+    internal void ShowSettingsForVisualQa() { Navigate("Settings"); StartWithWindowsCheck.BringIntoView(); }
     internal void ShowDefaultTopForVisualQa() { Navigate("Default"); DefaultEnabled.BringIntoView(); }
     internal void ShowPaletteSettingForVisualQa() { Navigate("Default"); PaletteDarkMint.BringIntoView(); }
     internal void SetOverlayPaletteForVisualQa(string id) => SelectOverlayPalette(id);
